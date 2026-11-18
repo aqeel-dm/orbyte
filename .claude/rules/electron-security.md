@@ -17,5 +17,5 @@ paths:
 - Validate AI-generated structured output (tasks, approvals, plans) with Zod before acting on it.
 - Credentials and API keys stay in main. Never send them over IPC or log them.
 - Return errors as `Result` with a stable `code`. Do not leak stack traces or internal paths to the renderer.
-- Do not loosen the CSP or add `openExternal`/navigation paths without recording the change in `docs/SECURITY.md`.
+- Do not loosen the CSP (`electron.vite.config.ts`) or the guards in `src/main/app/security.ts`, or add `openExternal`/navigation paths, without recording the change in `docs/SECURITY.md`.
 - Approval for execution must be a backend check against a stored record. Prompt text or permission modes are never the enforcement.

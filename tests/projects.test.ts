@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { AppError } from '../src/shared/types/result'
-import { registerProjectInputSchema } from '../src/shared/schemas/project'
+import { registerProjectInputSchema, removeProjectInputSchema } from '../src/shared/schemas/project'
+import { MAX_PENDING_TOKENS } from '../src/main/modules/projects/service'
 import { makeService, tempDir } from './helpers'
 
 const codeOf = async (p: Promise<unknown>) => {
@@ -54,7 +55,38 @@ describe('ProjectService', () => {
   })
 })
 
+describe('ProjectService limits', () => {
+  it('caps pending tokens by evicting the oldest', async () => {
+    const { service } = makeService()
+    const first = await service.prepare(tempDir())
+    for (let i = 0; i < MAX_PENDING_TOKENS; i++) await service.prepare(tempDir())
+    expect(await codeOf(service.register({ token: first.token, name: 'x', description: '' }))).toBe('INVALID_TOKEN')
+    const newest = await service.prepare(tempDir())
+    await expect(service.register({ token: newest.token, name: 'ok', description: '' })).resolves.toMatchObject({ name: 'ok' })
+  })
+
+  it('allows only one directory selection at a time and releases the lock', async () => {
+    const { service } = makeService()
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    const first = service.exclusivePick(() => gate)
+    expect(await codeOf(service.exclusivePick(async () => 1))).toBe('DIALOG_BUSY')
+    release()
+    await first
+    await expect(service.exclusivePick(async () => 2)).resolves.toBe(2)
+    await expect(service.exclusivePick(() => Promise.reject(new Error('boom')))).rejects.toThrow('boom')
+    await expect(service.exclusivePick(async () => 3)).resolves.toBe(3)
+  })
+})
+
 describe('IPC input schema', () => {
+  it('limits token and id length', () => {
+    const long = 'x'.repeat(65)
+    expect(registerProjectInputSchema.safeParse({ token: long, name: 'ok' }).success).toBe(false)
+    expect(removeProjectInputSchema.safeParse({ id: long }).success).toBe(false)
+    expect(removeProjectInputSchema.safeParse({ id: 'x'.repeat(64) }).success).toBe(true)
+  })
+
   it('requires a non-empty name and defaults description', () => {
     expect(registerProjectInputSchema.safeParse({ token: 't', name: '  ' }).success).toBe(false)
     expect(registerProjectInputSchema.parse({ token: 't', name: 'ok' }).description).toBe('')

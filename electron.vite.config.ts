@@ -5,6 +5,16 @@ import tailwind from '@tailwindcss/vite'
 
 const shared = resolve(__dirname, 'src/shared')
 
+// Production CSP is strict. The dev server needs inline scripts (React refresh preamble) and websockets.
+const CSP_PROD =
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+const CSP_DEV =
+  "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws://localhost:* http://localhost:*; object-src 'none'; base-uri 'none'; form-action 'none'"
+const csp = {
+  name: 'orbyte-csp',
+  transformIndexHtml: (html: string, ctx: { server?: unknown }) => html.replace('__CSP__', ctx.server ? CSP_DEV : CSP_PROD)
+}
+
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
@@ -24,7 +34,7 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
-    plugins: [react(), tailwind()],
+    plugins: [react(), tailwind(), csp],
     resolve: { alias: { '@': resolve(__dirname, 'src/renderer'), '@shared': shared } },
     build: { rollupOptions: { input: resolve(__dirname, 'src/renderer/index.html') } }
   }

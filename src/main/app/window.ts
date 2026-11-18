@@ -1,5 +1,11 @@
 import { join } from 'node:path'
-import { BrowserWindow, shell } from 'electron'
+import { pathToFileURL } from 'node:url'
+import { BrowserWindow } from 'electron'
+
+/** URL of the renderer entry: the dev server in development, the built file otherwise. */
+export function getAppEntryUrl(): string {
+  return process.env['ELECTRON_RENDERER_URL'] ?? pathToFileURL(join(__dirname, '../renderer/index.html')).href
+}
 
 export function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -14,23 +20,13 @@ export function createMainWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      webSecurity: true
+      webSecurity: true,
+      webviewTag: false
     }
   })
 
   win.once('ready-to-show', () => win.show())
-
-  // The renderer may never open new windows or navigate away from the app.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https:\/\//.test(url)) void shell.openExternal(url)
-    return { action: 'deny' }
-  })
-  win.webContents.on('will-navigate', (e, url) => {
-    if (url !== win.webContents.getURL()) e.preventDefault()
-  })
-
-  const devUrl = process.env['ELECTRON_RENDERER_URL']
-  if (devUrl) void win.loadURL(devUrl)
-  else void win.loadFile(join(__dirname, '../renderer/index.html'))
+  // Navigation, window.open and permission rules live in app/security.ts (all web contents).
+  void win.loadURL(getAppEntryUrl())
   return win
 }

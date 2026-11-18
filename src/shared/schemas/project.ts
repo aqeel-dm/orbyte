@@ -35,12 +35,12 @@ export const pickDirectoryResultSchema = z.union([
 ])
 
 export const registerProjectInputSchema = z.object({
-  token: z.string().min(1),
+  token: z.string().min(1).max(64),
   name: z.string().trim().min(1, 'Name is required').max(100),
   description: z.string().trim().max(1000).default('')
 })
 
-export const removeProjectInputSchema = z.object({ id: z.string().min(1) })
+export const removeProjectInputSchema = z.object({ id: z.string().min(1).max(64) })
 
 export type Project = z.infer<typeof projectSchema>
 export type RepoInspection = z.infer<typeof repoInspectionSchema>

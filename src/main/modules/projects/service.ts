@@ -6,6 +6,7 @@ import type { PickDirectoryResult, Project, RegisterProjectInput, RepoInspection
 import type { ProjectRepository } from './repository'
 
 const TOKEN_TTL_MS = 10 * 60_000
+export const MAX_PENDING_TOKENS = 20
 
 interface Pending {
   path: string
@@ -25,6 +26,7 @@ export interface ProjectServiceDeps {
  */
 export class ProjectService {
   private readonly pending = new Map<string, Pending>()
+  private picking = false
   private readonly now: () => number
 
   constructor(private readonly deps: ProjectServiceDeps) {
@@ -35,12 +37,29 @@ export class ProjectService {
     return this.deps.repo.list()
   }
 
+  /** Allows only one directory-selection flow at a time (prevents dialog spam). */
+  async exclusivePick<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.picking) throw new AppError('DIALOG_BUSY', 'A directory selection is already in progress.')
+    this.picking = true
+    try {
+      return await fn()
+    } finally {
+      this.picking = false
+    }
+  }
+
   /** Validates a user-selected directory and issues a registration token. */
   async prepare(selected: string): Promise<Extract<PickDirectoryResult, { cancelled: false }>> {
     const path = await this.validateDirectory(selected)
     const inspection = await this.deps.inspect(path)
     const token = randomUUID()
     this.sweep()
+    // Bound memory: evict the oldest selections (Map keeps insertion order).
+    while (this.pending.size >= MAX_PENDING_TOKENS) {
+      const oldest = this.pending.keys().next().value
+      if (oldest === undefined) break
+      this.pending.delete(oldest)
+    }
     this.pending.set(token, { path, inspection, expiresAt: this.now() + TOKEN_TTL_MS })
     return { cancelled: false, token, path, suggestedName: basename(path), inspection }
   }

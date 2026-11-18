@@ -10,11 +10,11 @@ Every handler returns `Result<T>`: `{ ok: true, data }` or `{ ok: false, error: 
 |---|---|---|---|
 | `list()` | `projects:list` | none | `Project[]` |
 | `pickDirectory()` | `projects:pickDirectory` | none | `{cancelled: true}` or `{cancelled: false, token, path, suggestedName, inspection}` |
-| `register(input)` | `projects:register` | `{token, name (1-100), description (<=1000, default '')}` | `Project` |
-| `remove(id)` | `projects:remove` | `{id}` | `null` |
+| `register(input)` | `projects:register` | `{token (<=64), name (1-100), description (<=1000, default '')}` | `Project` |
+| `remove(id)` | `projects:remove` | `{id (<=64)}` | `null` |
 
 ## Error codes in use
-`INVALID_INPUT`, `INVALID_TOKEN` (unknown, expired or already used), `INVALID_DIRECTORY`, `ALREADY_REGISTERED`, `NOT_FOUND`, `INTERNAL`.
+`INVALID_INPUT`, `INVALID_TOKEN` (unknown, expired, evicted or already used), `INVALID_DIRECTORY`, `DIALOG_BUSY` (a directory selection is already in progress), `ALREADY_REGISTERED`, `NOT_FOUND`, `INTERNAL`.
 
 ## Adding a channel
 1. Add the channel name to `IPC` in `shared/constants/ipc.ts`.

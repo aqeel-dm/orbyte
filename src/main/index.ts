@@ -5,7 +5,8 @@ import { inspectRepository } from './modules/git/inspect'
 import { ProjectRepository } from './modules/projects/repository'
 import { ProjectService } from './modules/projects/service'
 import { registerProjectHandlers } from './ipc/projects'
-import { createMainWindow } from './app/window'
+import { installAppSecurity } from './app/security'
+import { createMainWindow, getAppEntryUrl } from './app/window'
 
 let dbHandle: DbHandle | undefined
 
@@ -15,13 +16,18 @@ async function bootstrap(): Promise<void> {
 
   const projects = new ProjectService({ repo: new ProjectRepository(dbHandle.db), inspect: inspectRepository })
   registerProjectHandlers(projects)
+  installAppSecurity(getAppEntryUrl())
   createMainWindow()
 }
 
 // Single instance: one app owns the database and (later) all agent processes.
 if (!app.requestSingleInstanceLock()) app.quit()
 else {
-  app.on('second-instance', () => BrowserWindow.getAllWindows()[0]?.focus())
+  app.on('second-instance', () => {
+    const win = BrowserWindow.getAllWindows()[0]
+    if (win?.isMinimized()) win.restore()
+    win?.focus()
+  })
   void app.whenReady().then(bootstrap)
   // Closing the window must not end the app on macOS (agents keep running).
   app.on('window-all-closed', () => {

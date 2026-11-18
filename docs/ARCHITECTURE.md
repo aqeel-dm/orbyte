@@ -15,8 +15,9 @@ Source is the reference; if this document disagrees with the code, fix the docum
 **Decision:** the main process is the only backend. There is no HTTP server; renderer and main talk over Electron IPC only.
 
 ## Main process layout (Implemented)
-- `index.ts`: bootstrap. Single-instance lock, opens DB, builds services, registers handlers, creates the window. Closes the DB on `before-quit`. On macOS, closing the window does not quit the app.
-- `app/window.ts`: BrowserWindow and its security options (see `SECURITY.md`).
+- `index.ts`: bootstrap. Single-instance lock, opens DB, builds services, registers handlers, installs app security, creates the window. Closes the DB on `before-quit`. On macOS, closing the window does not quit the app.
+- `app/window.ts`: BrowserWindow and its security options; `getAppEntryUrl()`.
+- `app/security.ts`: app-wide navigation, window-open and permission guards on every web contents; `app/navigation-policy.ts` holds the pure URL rules (see `SECURITY.md`).
 - `ipc/handle.ts`: the one wrapper for every handler: Zod parse, call, return `Result`.
 - `ipc/projects.ts`: thin handlers for `projects:*`. The native folder dialog lives here.
 - `modules/projects/{repository,service}.ts`: data access and business rules.

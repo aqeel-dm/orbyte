@@ -61,4 +61,5 @@ Read-only agents in `.claude/agents/` (Read, Grep, Glob only): `architecture-rev
 - TypeScript 7: no `baseUrl`; aliases (`@shared/*`, `@/*`) are relative `paths`, mirrored in the Vite and Vitest configs.
 - Main is CommonJS and the sandboxed preload is one CJS file (`out/preload/index.cjs`). Do not add `"type": "module"`.
 - The renderer never passes filesystem paths. Directories are picked in main and registered by single-use token.
-- Known unfixed gaps (see `docs/SECURITY.md`): no IPC sender check, loose CSP in prod, project removal cascades the audit trail, `updated_at` not maintained.
+- Known unfixed gaps (see `docs/SECURITY.md`): no IPC sender check, `style-src 'unsafe-inline'` in prod CSP, git hardening before new git commands, project removal cascades the audit trail, `updated_at` not maintained.
+- CSP is injected at build time from `electron.vite.config.ts` (strict in prod, looser in dev). Navigation/permission guards live in `src/main/app/security.ts`.
