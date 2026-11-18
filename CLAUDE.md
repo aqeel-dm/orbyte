@@ -51,6 +51,10 @@ Docs (read the relevant one before changing that area, and update it when behavi
 - `docs/DEVELOPMENT.md`: setup, native modules, tests
 - `docs/ROADMAP.md`: the seven phases and status
 
+## Reviewers
+
+Read-only agents in `.claude/agents/` (Read, Grep, Glob only): `architecture-reviewer`, `code-reviewer`, `security-reviewer`. Skills in `.claude/skills/`: `orbyte-architecture-review`, `orbyte-security-review`, `orbyte-phase-verify`. Reviewers report; they do not fix.
+
 ## Gotchas
 
 - better-sqlite3 is built for Electron's ABI. Plain Node cannot load it. Use `pnpm test`.
