@@ -3,6 +3,8 @@
 Local-first desktop command center for coordinating Claude Code agents across projects.
 Electron + React + TypeScript + SQLite (Drizzle). Full product spec lives in the original brief; this repo is built in phases.
 
+See `CLAUDE.md` and `docs/` for architecture, security, IPC, database and roadmap documentation.
+
 ## Develop
 ```
 pnpm install      # also rebuilds better-sqlite3 for Electron (postinstall)
