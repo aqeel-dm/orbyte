@@ -11,6 +11,12 @@ import { ProjectRepository } from './modules/projects/repository'
 import { ProjectService } from './modules/projects/service'
 import { setTrustedAppEntry } from './ipc/handle'
 import { registerProjectHandlers } from './ipc/projects'
+import { registerTaskHandlers } from './ipc/tasks'
+import { ProposalRepository } from './modules/orchestration/proposal-repository'
+import { ProposalService } from './modules/orchestration/proposal-service'
+import { ActivityRepository } from './modules/projects/activity-repository'
+import { TaskRepository } from './modules/tasks/repository'
+import { TaskService } from './modules/tasks/service'
 import { installAppSecurity } from './app/security'
 import { createMainWindow, getAppEntryUrl } from './app/window'
 import { IPC } from '@shared/constants/ipc'
@@ -34,12 +40,33 @@ async function bootstrap(): Promise<void> {
   const emit = (event: AppEvent): void => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IPC.events.app, event)
   }
-  const teamLead = (teamLeadService = new TeamLeadService({ projects: projectRepo, chat: new ChatRepository(dbHandle.db), runner: createSdkRunner(), emit }))
+  const taskRepo = new TaskRepository(dbHandle.db)
+  const taskService = new TaskService({ projects: projectRepo, tasks: taskRepo, emit })
+  const proposalService = new ProposalService({
+    db: dbHandle.db,
+    projects: projectRepo,
+    tasks: taskRepo,
+    proposals: new ProposalRepository(dbHandle.db),
+    emit
+  })
+  const teamLead = (teamLeadService = new TeamLeadService({
+    projects: projectRepo,
+    chat: new ChatRepository(dbHandle.db),
+    runner: createSdkRunner(),
+    emit,
+    // The project id is bound here, on the server. The model never chooses which project a tool acts on.
+    taskToolsFor: (projectId) => ({
+      listTasks: () => taskService.digest(projectId),
+      propose: (input) => proposalService.record(projectId, input)
+    })
+  }))
   const onboarding = new OnboardingService({ projects: projectRepo, teamLead, discover: discoverProject, emit })
   onboarding.recoverInterrupted()
 
+  const projectService = new ProjectService({ repo: projectRepo, inspect: inspectRepository, discover: discoverProject })
+  registerTaskHandlers({ tasks: taskService, proposals: proposalService, activity: new ActivityRepository(dbHandle.db), projects: projectService })
   registerProjectHandlers({
-    projects: new ProjectService({ repo: projectRepo, inspect: inspectRepository, discover: discoverProject }),
+    projects: projectService,
     onboarding,
     teamLead,
     emit

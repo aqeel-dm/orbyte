@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { AUTH_HELP } from '@/hooks/use-team-lead-chat'
+import { ActivityList } from './activity-list'
 import { TrustPanel } from './trust-panel'
 
 const statusLabel = { pending: 'Not onboarded', in_progress: 'Onboarding…', ready: 'Ready', failed: 'Onboarding failed' } as const
@@ -71,6 +72,8 @@ export function OverviewTab({ project, onChanged }: { project: Project; onChange
           <p className="mt-2 whitespace-pre-wrap break-words text-sm">{data.summary}</p>
         </Card>
       )}
+      <ActivityList projectId={project.id} />
+
       {data?.workflowGuidance && (
         <Card className="p-4">
           <h2 className="font-semibold">Proposed workflow guidance</h2>

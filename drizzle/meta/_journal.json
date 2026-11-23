@@ -22,6 +22,13 @@
       "when": 1795441320597,
       "tag": "0002_clear_lightspeed",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1795442104023,
+      "tag": "0003_bizarre_green_goblin",
+      "breakpoints": true
     }
   ]
 }

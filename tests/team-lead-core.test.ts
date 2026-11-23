@@ -6,7 +6,7 @@ import { parseOnboardingOutput } from '../src/main/modules/projects/onboarding'
 import { sdk } from './helpers'
 
 describe('buildTeamLeadOptions (read-only by construction)', () => {
-  const base = { prompt: 'p', repoPath: '/repo', abortController: new AbortController(), trustRepoSettings: true }
+  const base = { prompt: 'p', repoPath: '/repo', abortController: new AbortController(), trustRepoSettings: true, taskTools: null }
   it('locks tools down and sets cwd/settings', () => {
     const o = buildTeamLeadOptions({ ...base, resumeSessionId: null })
     expect(o.cwd).toBe('/repo')
@@ -17,6 +17,21 @@ describe('buildTeamLeadOptions (read-only by construction)', () => {
     expect(o.settingSources).toEqual(['user', 'project', 'local'])
     expect(o.includePartialMessages).toBe(true)
     expect(o.resume).toBeUndefined()
+  })
+  it('without task tools there is no allowlist and every MCP tool is denied', () => {
+    const o = buildTeamLeadOptions({ ...base, resumeSessionId: null })
+    expect(o.allowedTools).toBeUndefined()
+    expect(o.disallowedTools).toContain('mcp__*')
+  })
+  it('with task tools allows exactly Orbyte\'s two tools, keeps strictMcpConfig, and never enables write tools', () => {
+    const tools = { listTasks: () => ({ tasks: [], total: 0 }), propose: () => ({ proposalId: 'p', count: 1 }) }
+    const o = buildTeamLeadOptions({ ...base, resumeSessionId: null, taskTools: tools })
+    expect(o.allowedTools).toEqual(['mcp__orbyte__list_tasks', 'mcp__orbyte__propose_tasks'])
+    expect(o.disallowedTools).not.toContain('mcp__*') // the wildcard would also block our own tools
+    expect(o.strictMcpConfig).toBe(true) // user/project MCP servers are never started
+    expect(o.tools).toEqual(['Read', 'Glob', 'Grep'])
+    expect(o.disallowedTools).toEqual(expect.arrayContaining(['Edit', 'Write', 'NotebookEdit', 'Bash']))
+    expect(o.permissionMode).toBe('dontAsk')
   })
   it('loads repo settings only when the project is trusted', () => {
     expect(buildTeamLeadOptions({ ...base, resumeSessionId: null, trustRepoSettings: true }).settingSources).toEqual(['user', 'project', 'local'])

@@ -2,17 +2,20 @@ import { ArrowLeft, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ChatTab } from '@/features/team-lead/chat-tab'
+import { TasksTab } from '@/features/tasks/tasks-tab'
+import { useTasks } from '@/hooks/use-tasks'
 import { OverviewTab } from '@/features/projects/overview-tab'
 import { useProject } from '@/hooks/use-project'
 import { cn } from '@/lib/utils'
 
-type Tab = 'overview' | 'chat'
-const comingSoon = [{ label: 'Tasks', phase: 'Phase 3' }, { label: 'Agents', phase: 'Phase 4' }]
+type Tab = 'overview' | 'chat' | 'tasks'
+const comingSoon = [{ label: 'Agents', phase: 'Phase 4' }]
 
 export function ProjectPage() {
   const { id = '' } = useParams()
   const { project, loading, error, refresh } = useProject(id)
   const [tab, setTab] = useState<Tab>('overview')
+  const { pending } = useTasks(id)
 
   if (loading) return <div className="flex items-center gap-2 p-12 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading…</div>
   if (!project) return <div className="p-12"><p role="alert" className="text-sm text-destructive">{error ?? 'Project not found.'}</p><Link to="/" className="mt-3 inline-block text-sm text-primary">Back to dashboard</Link></div>
@@ -25,10 +28,11 @@ export function ProjectPage() {
       <nav className="mt-4 flex border-b border-border" aria-label="Project sections">
         <button className={tabClass('overview')} onClick={() => setTab('overview')}>Overview</button>
         <button className={tabClass('chat')} onClick={() => setTab('chat')}>Team Lead</button>
+        <button className={tabClass('tasks')} onClick={() => setTab('tasks')}>Tasks{pending.length > 0 && <span className="ml-1.5 rounded-full bg-primary px-1.5 py-0.5 text-xs text-primary-foreground" title="Proposals waiting for your review">{pending.length}</span>}</button>
         {comingSoon.map((c) => <span key={c.label} className="cursor-not-allowed px-3 py-2 text-sm text-muted-foreground/50" title={`Available in ${c.phase}`}>{c.label} <span className="text-xs">({c.phase})</span></span>)}
       </nav>
       <div className="mt-4 min-h-0 flex-1">
-        {tab === 'overview' ? <OverviewTab project={project} onChanged={refresh} /> : <ChatTab projectId={project.id} disabled={project.status === 'archived' || project.repoSettingsTrust === 'unset'} disabledReason={project.status === 'archived' ? 'This project is archived.' : "Decide on this repository's Claude settings in the Overview tab first."} />}
+        {tab === 'overview' ? <OverviewTab project={project} onChanged={refresh} /> : tab === 'tasks' ? <TasksTab projectId={project.id} archived={project.status === 'archived'} /> : <ChatTab pendingProposals={pending.length} onOpenTasks={() => setTab('tasks')} projectId={project.id} disabled={project.status === 'archived' || project.repoSettingsTrust === 'unset'} disabledReason={project.status === 'archived' ? 'This project is archived.' : "Decide on this repository's Claude settings in the Overview tab first."} />}
       </div>
     </div>
   )

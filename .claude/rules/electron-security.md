@@ -18,6 +18,7 @@ paths:
 - Credentials and API keys stay in main. Never send them over IPC or log them.
 - Return errors as `Result` with a stable `code`. Do not leak stack traces or internal paths to the renderer.
 - Do not loosen the CSP (`electron.vite.config.ts`) or the guards in `src/main/app/security.ts`, or add `openExternal`/navigation paths, without recording the change in `docs/SECURITY.md`.
-- Keep the Team Lead read-only. Do not change `src/main/modules/agents/team-lead/options.ts` to add tools, `allowedTools`, `bypassPermissions`, or remove `strictMcpConfig` / `mcp__*` from `disallowedTools` without updating `docs/SECURITY.md` and the options test.
+- Keep the Team Lead read-only. Do not change `src/main/modules/agents/team-lead/options.ts` to add built-in tools, `bypassPermissions`, or remove `strictMcpConfig`. `allowedTools` may list only Orbyte's own tools (`TEAM_LEAD_TOOL_NAMES`), only for chat turns. Update `docs/SECURITY.md` and the options test with any change.
+- Task authorization: the Team Lead may only record proposals. Tasks are created only by `ProposalService.approve` (user action) or `TaskService.create` (user action from the renderer). Bind project ids server-side in tools; never accept a project id from the model. Task and proposal operations must verify the record's project id and return the same error as for a missing record.
 - Never load repo-owned Claude settings for a project unless `repoSettingsTrust === 'trusted'` (`options.ts` and the gates in `TeamLeadService`/`OnboardingService`). Never send raw SDK/runtime error text to the renderer; map it to a fixed message and log the detail in main.
 - Approval for execution must be a backend check against a stored record. Prompt text or permission modes are never the enforcement.

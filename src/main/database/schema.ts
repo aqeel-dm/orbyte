@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { check, index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import type { OnboardingData } from '@shared/schemas/onboarding'
+import type { ProposalItem } from '@shared/schemas/task'
 
 const now = sql`(unixepoch() * 1000)`
 
@@ -50,4 +51,63 @@ export const chatMessages = sqliteTable(
     createdAt: integer('created_at').notNull().default(now)
   },
   (t) => [index('chat_project_idx').on(t.projectId, t.createdAt)]
+)
+
+const taskStatuses = [
+  'backlog', 'ready', 'planning', 'awaiting_approval', 'in_progress', 'in_review', 'blocked', 'completed', 'cancelled'
+] as const
+
+export const tasks = sqliteTable(
+  'tasks',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    description: text('description').notNull().default(''),
+    status: text('status', { enum: taskStatuses }).notNull().default('backlog'),
+    priority: text('priority', { enum: ['low', 'medium', 'high', 'urgent'] }).notNull().default('medium'),
+    /** Provenance: who created the task. */
+    source: text('source', { enum: ['user', 'team_lead'] }).notNull(),
+    /** Stored for later phases (4-6); nothing writes these yet except their defaults. */
+    assignedAgentId: text('assigned_agent_id'),
+    implementationPlan: text('implementation_plan'),
+    approvalStatus: text('approval_status', { enum: ['none', 'pending', 'approved', 'rejected'] }).notNull().default('none'),
+    executionStatus: text('execution_status', { enum: ['idle', 'running', 'succeeded', 'failed', 'interrupted'] }).notNull().default('idle'),
+    resultSummary: text('result_summary'),
+    createdAt: integer('created_at').notNull().default(now),
+    updatedAt: integer('updated_at').notNull().default(now)
+  },
+  (t) => [index('tasks_project_idx').on(t.projectId, t.status)]
+)
+
+export const taskDependencies = sqliteTable(
+  'task_dependencies',
+  {
+    taskId: text('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    dependsOnTaskId: text('depends_on_task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' })
+  },
+  (t) => [primaryKey({ columns: [t.taskId, t.dependsOnTaskId] }), check('task_dependencies_no_self', sql`${t.taskId} <> ${t.dependsOnTaskId}`)]
+)
+
+export const taskProposals = sqliteTable(
+  'task_proposals',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    summary: text('summary').notNull().default(''),
+    items: text('items', { mode: 'json' }).$type<ProposalItem[]>().notNull(),
+    status: text('status', { enum: ['pending', 'approved', 'dismissed'] }).notNull().default('pending'),
+    createdTaskIds: text('created_task_ids', { mode: 'json' }).$type<string[]>().notNull().default([]),
+    createdAt: integer('created_at').notNull().default(now),
+    decidedAt: integer('decided_at')
+  },
+  (t) => [index('proposals_project_idx').on(t.projectId, t.status)]
 )

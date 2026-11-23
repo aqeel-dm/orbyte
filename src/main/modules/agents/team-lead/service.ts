@@ -5,6 +5,7 @@ import type { ProjectRepository } from '../../projects/repository'
 import type { ChatRepository } from './chat-repository'
 import { classifyError, mapSdkMessage } from './events'
 import type { TeamLeadRunner } from './runner'
+import type { TeamLeadTaskTools } from './tools'
 
 export type TurnPurpose = 'chat' | 'onboarding'
 export type TurnOutcome = { ok: true; text: string } | { ok: false; code: string; message: string; partial?: string }
@@ -32,6 +33,8 @@ export interface TeamLeadDeps {
   chat: ChatRepository
   runner: TeamLeadRunner
   emit: (event: AppEvent) => void
+  /** Builds the task tools for a project. Used for chat turns only. */
+  taskToolsFor?: (projectId: string) => TeamLeadTaskTools
   turnTimeoutMs?: number
   chatMaxTurns?: number
 }
@@ -130,7 +133,7 @@ export class TeamLeadService {
 
     try {
       this.emit({ type: 'turn_started', projectId, turnId, purpose })
-      const outcome = await this.runWithResumeFallback(opts, turnId, abort, state, project.teamLeadSessionId)
+      const outcome = await this.runWithResumeFallback({ ...opts, purpose }, turnId, abort, state, project.teamLeadSessionId)
 
       if (outcome.ok) {
         const messageId = opts.saveToChat && outcome.text.trim() ? this.deps.chat.add(projectId, 'assistant', outcome.text).id : null
@@ -148,7 +151,7 @@ export class TeamLeadService {
   }
 
   private async runWithResumeFallback(
-    opts: { projectId: string; prompt: string; maxTurns?: number },
+    opts: { projectId: string; prompt: string; maxTurns?: number; purpose: TurnPurpose },
     turnId: string,
     abort: AbortController,
     state: TurnState,
@@ -164,7 +167,7 @@ export class TeamLeadService {
   }
 
   private async attempt(
-    opts: { projectId: string; prompt: string; maxTurns?: number },
+    opts: { projectId: string; prompt: string; maxTurns?: number; purpose: TurnPurpose },
     turnId: string,
     abort: AbortController,
     state: TurnState,
@@ -186,6 +189,8 @@ export class TeamLeadService {
         repoPath: project.repoPath,
         resumeSessionId,
         trustRepoSettings: project.repoSettingsTrust === 'trusted',
+        // Only chat turns (started by the user's message) get task tools. Onboarding never proposes work.
+        taskTools: opts.purpose === 'chat' && this.deps.taskToolsFor ? this.deps.taskToolsFor(projectId) : null,
         abortController: abort,
         ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {})
       })

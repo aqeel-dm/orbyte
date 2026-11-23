@@ -22,11 +22,21 @@ Invoke channels (renderer to main), defined in `src/shared/constants/ipc.ts`; th
 | `teamLead.interrupt(projectId)` | `teamLead:interrupt` | `{projectId}` | `null` |
 | `teamLead.history(projectId)` | `teamLead:history` | `{projectId}` | `ChatMessage[]` oldest first |
 
+| `tasks.list(projectId)` | `tasks:list` | `{projectId}` | `Task[]` |
+| `tasks.create(input)` | `tasks:create` | `{projectId, title (1-120), description (<=4000), priority, dependsOnTaskIds (<=20)}` | `Task` (always `source: user`, status `backlog`) |
+| `tasks.update(input)` | `tasks:update` | `{projectId, taskId, patch: {title?, description?, priority?, dependsOnTaskIds?}}` | `Task` |
+| `tasks.transition(projectId, taskId, to)` | `tasks:transition` | `{projectId, taskId, to}` | `Task`. The handler passes the actor `user`; the orchestrator actor is not reachable from the renderer |
+| `tasks.summary()` | `tasks:summary` | none | `{open, byStatus}` across non-archived projects |
+| `proposals.list(projectId)` | `proposals:list` | `{projectId}` | `TaskProposal[]` (pending first) |
+| `proposals.approve(projectId, proposalId, items)` | `proposals:approve` | `{projectId, proposalId, items: ProposalItem[] (1-20)}` | `Task[]` created. The only way a Team Lead suggestion becomes tasks |
+| `proposals.dismiss(projectId, proposalId)` | `proposals:dismiss` | `{projectId, proposalId}` | `TaskProposal` |
+| `activity.list(projectId, limit?)` | `activity:list` | `{projectId, limit (1-200)}` | `ActivityEvent[]`, newest first |
+
 ## Push events (main to renderer)
-One fixed channel, `events:app`. The renderer subscribes with `window.orbyte.onEvent(listener)` (returns an unsubscribe function). The preload validates every payload with `appEventSchema` and drops invalid ones. Every event carries `projectId`; the renderer must filter by it. `archive`, `restore` and `setTrust` also push `project_updated` so every open view refreshes. Types: `turn_started` (purpose `chat|onboarding`), `text_delta`, `tool_activity`, `turn_completed` (`messageId` or null), `turn_error` (`code`, `message`), `project_updated`.
+One fixed channel, `events:app`. The renderer subscribes with `window.orbyte.onEvent(listener)` (returns an unsubscribe function). The preload validates every payload with `appEventSchema` and drops invalid ones. Every event carries `projectId`; the renderer must filter by it. `archive`, `restore` and `setTrust` also push `project_updated` so every open view refreshes. Also `tasks_changed` and `proposals_changed` (carry `projectId`). Types: `turn_started` (purpose `chat|onboarding`), `text_delta`, `tool_activity`, `turn_completed` (`messageId` or null), `turn_error` (`code`, `message`), `project_updated`.
 
 ## Error codes in use
-Invoke results: `INVALID_INPUT`, `FORBIDDEN` (untrusted sender frame), `INVALID_TOKEN` (unknown, expired, evicted or used), `INVALID_DIRECTORY`, `DIALOG_BUSY`, `ALREADY_REGISTERED`, `NOT_FOUND`, `PROJECT_ARCHIVED`, `TURN_IN_PROGRESS`, `ONBOARDING_IN_PROGRESS` (chat while onboarding runs), `TRUST_REQUIRED` (repo-settings trust is `unset`), `ALREADY_RUNNING` (onboarding), `FORBIDDEN`, `INTERNAL`.
+Invoke results: `INVALID_INPUT`, `FORBIDDEN` (untrusted sender frame), `INVALID_TOKEN` (unknown, expired, evicted or used), `INVALID_DIRECTORY`, `DIALOG_BUSY`, `ALREADY_REGISTERED`, `NOT_FOUND`, `PROJECT_ARCHIVED`, `TURN_IN_PROGRESS`, `ONBOARDING_IN_PROGRESS` (chat while onboarding runs), `TRUST_REQUIRED` (repo-settings trust is `unset`), `INVALID_DEPENDENCY`, `INVALID_TRANSITION`, `NOT_EDITABLE`, `CONFLICT` (task changed under a move), `INVALID_PROPOSAL`, `ALREADY_DECIDED`, `TOO_MANY_PROPOSALS`, `ALREADY_RUNNING` (onboarding), `FORBIDDEN`, `INTERNAL`.
 Turn errors (events and stored onboarding errors): `AUTH_REQUIRED`, `SESSION_NOT_FOUND` (handled internally by retrying fresh; surfaces only if the retry also fails), `INTERRUPTED`, `TIMEOUT`, `NO_RESULT`, `TRUST_REQUIRED`, `AGENT_ERROR`, `ONBOARDING_ERROR`.
 
 ## Adding a channel

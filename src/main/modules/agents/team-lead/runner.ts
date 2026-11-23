@@ -1,5 +1,6 @@
 import { loadAgentSdk, type ClaudeAgentSdk } from './sdk-loader'
 import { buildTeamLeadOptions, type TeamLeadRunRequest } from './options'
+import { createOrbyteServer } from './tools'
 
 /** Seam for tests: yields raw SDK messages for one turn. */
 export interface TeamLeadRunner {
@@ -10,7 +11,9 @@ export function createSdkRunner(load: () => Promise<ClaudeAgentSdk> = loadAgentS
   return {
     async *run(req) {
       const sdk = await load()
-      yield* sdk.query({ prompt: req.prompt, options: buildTeamLeadOptions(req) })
+      const options = buildTeamLeadOptions(req)
+      if (req.taskTools) options.mcpServers = { orbyte: createOrbyteServer(sdk, req.taskTools) }
+      yield* sdk.query({ prompt: req.prompt, options })
     }
   }
 }

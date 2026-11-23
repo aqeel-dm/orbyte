@@ -1,9 +1,10 @@
 import { FolderPlus, Loader2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Project } from '@shared/schemas/project'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useProjects } from '@/hooks/use-projects'
+import type { TaskSummary } from '@shared/schemas/task'
 import { ProjectCard } from '@/features/projects/project-card'
 import { RegisterProjectDialog } from '@/features/projects/register-project-dialog'
 
@@ -22,6 +23,12 @@ export function DashboardPage() {
   const [showArchived, setShowArchived] = useState(false)
   const { projects, loading, error, refresh } = useProjects(showArchived)
   const [open, setOpen] = useState(false)
+  const [summary, setSummary] = useState<TaskSummary | null>(null)
+  useEffect(() => {
+    const load = () => void window.orbyte.tasks.summary().then((r) => { if (r.ok) setSummary(r.data) })
+    load()
+    return window.orbyte.onEvent((e) => { if (e.type === 'tasks_changed' || e.type === 'project_updated') load() })
+  }, [])
   const [actionError, setActionError] = useState<string | null>(null)
 
   async function archive(p: Project) {
@@ -49,7 +56,7 @@ export function DashboardPage() {
 
       <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Projects" value={projects.filter((p) => p.status === 'active').length} />
-        <Stat label="Team Leads" value="—" note="Phase 2" />
+        <Stat label="Open tasks" value={summary?.open ?? '—'} note={summary ? `${summary.byStatus['in_progress'] ?? 0} in progress` : undefined} />
         <Stat label="Developer agents" value="—" note="Phase 4" />
         <Stat label="Pending approvals" value="—" note="Phase 5" />
       </section>

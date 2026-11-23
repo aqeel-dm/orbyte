@@ -61,7 +61,10 @@ describe('ProjectRepository', () => {
     const upgraded = openDatabase(file, resolve(__dirname, '../drizzle'))
     const repo = new ProjectRepository(upgraded.db)
     expect(repo.list().map((p) => [p.id, p.onboardingData])).toEqual([['p1', null]])
-    expect(upgraded.raw.prepare("select name from sqlite_master where name='chat_messages'").get()).toBeTruthy()
+    for (const table of ['chat_messages', 'tasks', 'task_dependencies', 'task_proposals']) {
+      expect(upgraded.raw.prepare('select name from sqlite_master where name = ?').get(table), table).toBeTruthy()
+    }
+    expect(repo.list()[0]?.repoSettingsTrust).toBe('unset')
     upgraded.close()
   })
 })

@@ -6,6 +6,8 @@ import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import * as schema from './schema'
 
 export type Db = BetterSQLite3Database<typeof schema>
+/** A database or an open transaction: lets repository methods join a caller's transaction. */
+export type DbOrTx = Pick<Db, 'select' | 'insert' | 'update' | 'delete'>
 export interface DbHandle {
   db: Db
   /** Raw better-sqlite3 handle (tests and diagnostics only). */

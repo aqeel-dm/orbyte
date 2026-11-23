@@ -6,9 +6,9 @@ Stack: Electron, React 19 + TypeScript (strict) + Vite (electron-vite), Tailwind
 
 ## Status
 
-**Phases 1 and 2 are implemented** (merged into `main`). Implemented: secure Electron shell, typed IPC with sender check, SQLite + migrations, dashboard, project registration, archive/restore, project page, onboarding (read-only discovery + Team Lead summary), and a read-only Team Lead chat on the Claude Agent SDK with streaming, persisted history and session resume.
+**Phases 1, 2 and 3 are implemented** (Phase 3 may be uncommitted: check `git status`). Implemented: secure Electron shell, typed IPC with sender check, SQLite + migrations, dashboard, project registration, archive/restore, project page, onboarding (read-only discovery + Team Lead summary), a read-only Team Lead chat on the Claude Agent SDK with streaming, persisted history and session resume, and a task backlog with dependencies, a validated state machine and Team Lead task proposals that only the user can approve.
 
-Not built: tasks and Team Lead task tools, developer agents, terminals, approvals, orchestration. Phase 3 (tasks and orchestration) is next but **must not start without explicit user authorization**. Do not implement future phases, add their dependencies or tables, or describe them as existing. Details: @docs/ROADMAP.md
+Not built: developer agents, terminals, plan and approval records, execution. Phase 4 (developer agent runtime) is next but **must not start without explicit user authorization**. Do not implement future phases, add their dependencies or tables, or describe them as existing. Details: @docs/ROADMAP.md
 
 ## Commands
 
@@ -24,7 +24,7 @@ There is no linter or formatter. Before saying work is done, run `pnpm typecheck
 
 ## Layout
 
-- `src/main/`: backend. `app/` (window), `ipc/` (`handle.ts` wrapper + thin handlers), `modules/projects/` (repository, service, discovery, onboarding), `modules/agents/team-lead/` (read-only SDK session), `modules/git/` (read-only inspect), `database/` (schema, client)
+- `src/main/`: backend. `app/` (window), `ipc/` (`handle.ts` wrapper + thin handlers), `modules/projects/` (repository, service, discovery, onboarding), `modules/tasks/` (state, dependencies), `modules/orchestration/` (proposal approval), `modules/agents/team-lead/` (read-only SDK session + task tools), `modules/git/` (read-only inspect), `database/` (schema, client)
 - `src/preload/index.ts`: the only bridge, exposes `window.orbyte`
 - `src/renderer/`: React UI (`pages/`, `features/`, `components/ui/`, `hooks/`, `layouts/`, `lib/`)
 - `src/shared/`: Zod schemas, types, IPC channel map (the contract; imports nothing from other layers)
@@ -62,7 +62,8 @@ Read-only agents in `.claude/agents/` (Read, Grep, Glob only): `architecture-rev
 - Main is CommonJS and the sandboxed preload is one CJS file (`out/preload/index.cjs`). Do not add `"type": "module"`.
 - The renderer never passes filesystem paths. Directories are picked in main and registered by single-use token.
 - The Agent SDK is ESM-only; main is CommonJS, so load it only via `sdk-loader.ts` (dynamic `import()`), kept external.
-- Team Lead options (`modules/agents/team-lead/options.ts`) are the read-only enforcement: never add tools, `allowedTools`, bypass modes, or drop `strictMcpConfig`/`mcp__*` (your personal MCP tools leak in otherwise). Tests assert this.
+- Team Lead options (`modules/agents/team-lead/options.ts`) are the read-only enforcement: never add built-in tools, bypass modes, or drop `strictMcpConfig` (your personal MCP tools leak in otherwise). `allowedTools` may contain only Orbyte's own two tools, and only for chat turns. Tests assert this.
+- The Team Lead can only PROPOSE tasks (`propose_tasks`); only `ProposalService.approve` (user action) creates them. Never add a path from the Team Lead to `TaskService.create`/`TaskRepository.create`. Task moves go through `src/shared/task-state.ts`; nothing may enter `in_progress` without `approvalVerified`.
 - Team Lead auth uses the user's existing Claude Code login (user's choice; see `docs/SECURITY.md` policy caveat). Repo settings (hooks) load only after the user marks the project `trusted` (`repoSettingsTrust`); `unset` blocks the Team Lead in main. It can read `.env` files in the project.
 - End-to-end check recipe: `docs/DEVELOPMENT.md`.
 - Known gaps (see `docs/SECURITY.md`): `style-src 'unsafe-inline'` in prod CSP, `repoPath` revalidation before developer agents, heuristic auth-error detection, no packaging config. Never send raw SDK/runtime error text to the renderer (map to fixed messages; log in main).

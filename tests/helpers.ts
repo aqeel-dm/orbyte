@@ -39,3 +39,23 @@ export const sdk = {
   success: (result = '') => ({ type: 'result', subtype: 'success', is_error: false, result }),
   error: (result: string) => ({ type: 'result', subtype: 'error_during_execution', is_error: true, result })
 }
+
+import { ProposalRepository } from '../src/main/modules/orchestration/proposal-repository'
+import { ProposalService } from '../src/main/modules/orchestration/proposal-service'
+import { TaskRepository } from '../src/main/modules/tasks/repository'
+import { TaskService } from '../src/main/modules/tasks/service'
+import type { AppEvent } from '../src/shared/schemas/team-lead'
+
+/** Projects + tasks + proposals on one in-memory database, collecting emitted events. */
+export function makeTaskStack() {
+  const stack = makeStack()
+  const events: AppEvent[] = []
+  const emit = (e: AppEvent) => events.push(e)
+  const taskRepo = new TaskRepository(stack.handle.db)
+  const proposalRepo = new ProposalRepository(stack.handle.db)
+  const tasks = new TaskService({ projects: stack.projects, tasks: taskRepo, emit })
+  const proposals = new ProposalService({ db: stack.handle.db, projects: stack.projects, tasks: taskRepo, proposals: proposalRepo, emit })
+  const eventTypes = (projectId: string) =>
+    (stack.handle.raw.prepare('select type from activity_events where project_id = ? order by rowid').all(projectId) as { type: string }[]).map((r) => r.type)
+  return { ...stack, events, taskRepo, proposalRepo, tasks, proposals, eventTypes }
+}

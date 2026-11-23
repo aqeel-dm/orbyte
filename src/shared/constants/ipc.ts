@@ -18,6 +18,21 @@ export const IPC = {
     interrupt: 'teamLead:interrupt',
     history: 'teamLead:history'
   },
+  tasks: {
+    list: 'tasks:list',
+    create: 'tasks:create',
+    update: 'tasks:update',
+    transition: 'tasks:transition',
+    summary: 'tasks:summary'
+  },
+  proposals: {
+    list: 'proposals:list',
+    approve: 'proposals:approve',
+    dismiss: 'proposals:dismiss'
+  },
+  activity: {
+    list: 'activity:list'
+  },
   /** Main -> renderer push channel (one fixed channel; payloads are validated). */
   events: {
     app: 'events:app'

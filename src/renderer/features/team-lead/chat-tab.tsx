@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { AUTH_HELP, useTeamLeadChat } from '@/hooks/use-team-lead-chat'
 import { cn } from '@/lib/utils'
 
-export function ChatTab({ projectId, disabled, disabledReason }: { projectId: string; disabled: boolean; disabledReason: string }) {
+export function ChatTab({ projectId, disabled, disabledReason, pendingProposals, onOpenTasks }: { projectId: string; disabled: boolean; disabledReason: string; pendingProposals: number; onOpenTasks: () => void }) {
   const chat = useTeamLeadChat(projectId)
   const [text, setText] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
@@ -19,6 +19,11 @@ export function ChatTab({ projectId, disabled, disabledReason }: { projectId: st
   const busy = chat.working !== null
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {pendingProposals > 0 && (
+        <button onClick={onOpenTasks} className="mt-2 rounded-md border border-primary/40 bg-accent px-3 py-2 text-left text-sm hover:opacity-90">
+          The Team Lead proposed tasks ({pendingProposals} waiting). Nothing is created until you review them in the Tasks tab →
+        </button>
+      )}
       <div className="min-h-0 flex-1 space-y-4 overflow-auto px-1 py-4">
         {chat.loading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>

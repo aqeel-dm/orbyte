@@ -23,6 +23,21 @@ const api: OrbyteApi = {
     interrupt: (projectId) => ipcRenderer.invoke(IPC.teamLead.interrupt, { projectId }),
     history: (projectId) => ipcRenderer.invoke(IPC.teamLead.history, { projectId })
   },
+  tasks: {
+    list: (projectId) => ipcRenderer.invoke(IPC.tasks.list, { projectId }),
+    create: (input) => ipcRenderer.invoke(IPC.tasks.create, input),
+    update: (input) => ipcRenderer.invoke(IPC.tasks.update, input),
+    transition: (projectId, taskId, to) => ipcRenderer.invoke(IPC.tasks.transition, { projectId, taskId, to }),
+    summary: () => ipcRenderer.invoke(IPC.tasks.summary)
+  },
+  proposals: {
+    list: (projectId) => ipcRenderer.invoke(IPC.proposals.list, { projectId }),
+    approve: (projectId, proposalId, items) => ipcRenderer.invoke(IPC.proposals.approve, { projectId, proposalId, items }),
+    dismiss: (projectId, proposalId) => ipcRenderer.invoke(IPC.proposals.dismiss, { projectId, proposalId })
+  },
+  activity: {
+    list: (projectId, limit) => ipcRenderer.invoke(IPC.activity.list, { projectId, limit })
+  },
   onEvent: (listener) => {
     const handler = (_e: unknown, payload: unknown): void => {
       const parsed = appEventSchema.safeParse(payload)
