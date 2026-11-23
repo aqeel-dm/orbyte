@@ -41,7 +41,7 @@ describe('OnboardingService', () => {
     expect(t.requests[0]?.maxTurns).toBeGreaterThan(0)
     expect(t.requests[0]?.prompt).toContain('CLAUDE.md')
     expect(t.chat.list(t.project.id)).toEqual([]) // onboarding prompts are not chat history
-    expect(t.eventTypes()).toEqual(['project.registered', 'onboarding.started', 'onboarding.discovered', 'teamlead.session_started', 'onboarding.completed'])
+    expect(t.eventTypes()).toEqual(['project.registered', 'project.trust_changed', 'onboarding.started', 'onboarding.discovered', 'teamlead.session_started', 'onboarding.completed'])
     expect(t.events.filter((e) => e.type === 'project_updated').length).toBeGreaterThanOrEqual(3)
   })
 
@@ -59,7 +59,9 @@ describe('OnboardingService', () => {
   it('marks failed when discovery throws', async () => {
     const t = setup(() => [sdk.success('x')], async () => { throw new Error('disk gone') })
     t.onboarding.start(t.project.id); await t.settled()
-    expect(t.projects.get(t.project.id)?.onboardingData?.error).toMatchObject({ code: 'ONBOARDING_ERROR', message: 'disk gone' })
+    const err = t.projects.get(t.project.id)?.onboardingData?.error
+    expect(err?.code).toBe('ONBOARDING_ERROR')
+    expect(err?.message).not.toContain('disk gone') // raw error text is logged, not stored or shown
   })
 
   it('refuses to start twice, for archived projects, and for unknown projects', async () => {
@@ -82,5 +84,24 @@ describe('OnboardingService', () => {
     expect(t.eventTypes()).toContain('onboarding.interrupted')
     expect(t.onboarding.recoverInterrupted()).toEqual([])
     expect(() => t.onboarding.start(t.project.id)).not.toThrow()
+  })
+
+  it('a throwing event emitter cannot leave onboarding stuck in_progress', async () => {
+    const stack = makeStack()
+    const project = stack.addProject()
+    const runner = { async *run() { yield sdk.success('## Project summary\nok') } }
+    const teamLead = new TeamLeadService({ projects: stack.projects, chat: stack.chat, runner, emit: () => { throw new Error('window destroyed') } })
+    const onboarding = new OnboardingService({ projects: stack.projects, teamLead, discover: async () => discovery, emit: () => { throw new Error('window destroyed') } })
+    onboarding.start(project.id)
+    await new Promise<void>((resolve) => { const i = setInterval(() => { const s = stack.projects.get(project.id)?.onboardingStatus; if (s === 'ready' || s === 'failed') { clearInterval(i); resolve() } }, 2) })
+    expect(stack.projects.get(project.id)?.onboardingStatus).toBe('ready')
+  })
+
+  it('refuses to onboard until the user has decided on repo settings', () => {
+    const t = setup(() => [sdk.success('x')])
+    const unset = t.addProject({}, 'unset')
+    expect(() => t.onboarding.start(unset.id)).toThrow(/Claude settings/i)
+    expect(t.projects.get(unset.id)?.onboardingStatus).toBe('pending')
+    expect(t.requests).toHaveLength(0)
   })
 })

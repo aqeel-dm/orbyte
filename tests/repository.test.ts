@@ -5,6 +5,19 @@ import { openDatabase } from '../src/main/database/client'
 import { ProjectRepository } from '../src/main/modules/projects/repository'
 import { makeStack, tempDir } from './helpers'
 
+describe('repo settings trust', () => {
+  it('defaults to unset, changes with an audit event, and ignores unknown projects', () => {
+    const { projects, addProject, handle } = makeStack()
+    const p = addProject({}, 'unset')
+    expect(p.repoSettingsTrust).toBe('unset')
+    expect(projects.setRepoSettingsTrust(p.id, 'untrusted')?.repoSettingsTrust).toBe('untrusted')
+    expect(projects.setRepoSettingsTrust(p.id, 'trusted')?.repoSettingsTrust).toBe('trusted')
+    expect(projects.setRepoSettingsTrust('missing', 'trusted')).toBeUndefined()
+    const events = handle.raw.prepare("select payload from activity_events where type = 'project.trust_changed' order by rowid").all().map((r) => (r as { payload: string }).payload)
+    expect(events).toEqual(['{"trust":"untrusted"}', '{"trust":"trusted"}'])
+  })
+})
+
 describe('ProjectRepository', () => {
   it('maintains updated_at and records audit events on status and onboarding changes', async () => {
     const { projects, addProject, handle } = makeStack()
@@ -16,7 +29,7 @@ describe('ProjectRepository', () => {
     expect(onboarded.updatedAt).toBeGreaterThanOrEqual(archived.updatedAt)
     expect(projects.setStatus('missing', 'active')).toBeUndefined()
     const types = handle.raw.prepare('select type from activity_events order by rowid').all().map((r) => (r as { type: string }).type)
-    expect(types).toEqual(['project.registered', 'project.archived', 'onboarding.completed'])
+    expect(types).toEqual(['project.registered', 'project.trust_changed', 'project.archived', 'onboarding.completed'])
   })
 
   it('stores chat messages per project in order and cascades on hard delete of a project row', () => {

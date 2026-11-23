@@ -8,7 +8,7 @@ import { makeStack, sdk } from './helpers'
 
 type Script = (req: TeamLeadRunRequest, call: number) => unknown[] | Error | Promise<unknown[] | Error>
 
-function setup(script: Script) {
+function setup(script: Script, extra: Partial<ConstructorParameters<typeof TeamLeadService>[0]> = {}) {
   const stack = makeStack()
   const events: AppEvent[] = []
   const requests: TeamLeadRunRequest[] = []
@@ -20,7 +20,7 @@ function setup(script: Script) {
       if (out instanceof Error) throw out
     }
   }
-  const service = new TeamLeadService({ projects: stack.projects, chat: stack.chat, runner, emit: (e) => events.push(e) })
+  const service = new TeamLeadService({ projects: stack.projects, chat: stack.chat, runner, emit: (e) => events.push(e), ...extra })
   const project = stack.addProject()
   const done = () => new Promise<void>((resolve) => {
     const t = setInterval(() => { if (events.some((e) => e.type === 'turn_completed' || e.type === 'turn_error')) { clearInterval(t); resolve() } }, 2)
@@ -82,7 +82,7 @@ describe('TeamLeadService', () => {
     const t = setup(() => new Error('spawn failed'))
     t.service.send(t.project.id, 'hi'); await t.done()
     expect(t.events.filter((e) => e.type === 'turn_error')).toHaveLength(1)
-    expect(t.events.find((e) => e.type === 'turn_error')).toMatchObject({ code: 'AGENT_ERROR', message: 'spawn failed' })
+    expect(t.events.find((e) => e.type === 'turn_error')).toMatchObject({ code: 'AGENT_ERROR' })
   })
 
   it('reports NO_RESULT when the stream ends without a result', async () => {
@@ -136,5 +136,88 @@ describe('TeamLeadService', () => {
     t.service.send(t.project.id, 'mine'); await t.done()
     expect(t.service.history(other.id)).toEqual([])
     expect(t.service.history(t.project.id).length).toBe(2)
+  })
+
+  it('does not leak raw error text (paths, stderr) to events', async () => {
+    const t = setup(() => new Error('spawn EACCES /Users/secret/path/claude'))
+    t.service.send(t.project.id, 'hi'); await t.done()
+    const err = t.events.find((e) => e.type === 'turn_error')
+    expect(err).toMatchObject({ code: 'AGENT_ERROR' })
+    expect(JSON.stringify(t.events)).not.toContain('/Users/secret')
+  })
+
+  it('rejects chat while onboarding is in progress, and a refused turn emits no events', async () => {
+    const t = setup(() => [sdk.success('x')])
+    t.projects.setOnboarding(t.project.id, 'in_progress', {}, 'onboarding.started')
+    expect(() => t.service.send(t.project.id, 'hi')).toThrow(/onboarding/i)
+    // a second runTurn while one is active is refused silently (no terminal event for the running turn)
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    const busy = setup(async () => { await gate; return [sdk.success('x')] })
+    busy.service.send(busy.project.id, 'one')
+    busy.events.length = 0
+    const refused = await busy.service.runTurn({ projectId: busy.project.id, prompt: 'p', purpose: 'onboarding', saveToChat: false })
+    expect(refused).toMatchObject({ ok: false, code: 'TURN_IN_PROGRESS' })
+    expect(busy.events).toEqual([])
+    release(); await busy.done()
+  })
+
+  it('stops a hung turn with TIMEOUT and frees the slot', async () => {
+    const t = setup(() => [], { turnTimeoutMs: 20 })
+    const hung: TeamLeadRunner = { async *run(req) { await new Promise<void>((_r, rej) => req.abortController.signal.addEventListener('abort', () => rej(new Error('aborted')))); yield sdk.success() } }
+    const svc = new TeamLeadService({ projects: t.projects, chat: t.chat, runner: hung, emit: (e) => t.events.push(e), turnTimeoutMs: 20 })
+    svc.send(t.project.id, 'go'); await t.done()
+    expect(t.events.find((e) => e.type === 'turn_error')).toMatchObject({ code: 'TIMEOUT' })
+    expect(svc.isActive(t.project.id)).toBe(false)
+  })
+
+  it('shutdown aborts active turns and resolves', async () => {
+    const t = setup(() => [])
+    const hung: TeamLeadRunner = { async *run(req) { await new Promise<void>((_r, rej) => req.abortController.signal.addEventListener('abort', () => rej(new Error('aborted')))); yield sdk.success() } }
+    const svc = new TeamLeadService({ projects: t.projects, chat: t.chat, runner: hung, emit: (e) => t.events.push(e) })
+    svc.send(t.project.id, 'go')
+    expect(svc.isActive(t.project.id)).toBe(true)
+    await svc.shutdown(2000)
+    expect(svc.isActive(t.project.id)).toBe(false)
+    expect(t.events.find((e) => e.type === 'turn_error')).toMatchObject({ code: 'INTERRUPTED' })
+  })
+
+  it('a throwing emit does not break the turn', async () => {
+    const t = setup(() => [sdk.delta('hi'), sdk.success('hi')])
+    let calls = 0
+    const svc = new TeamLeadService({ projects: t.projects, chat: t.chat, runner: { async *run() { yield sdk.delta('hi'); yield sdk.success('hi') } }, emit: () => { calls++; throw new Error('window destroyed') } })
+    const outcome = await svc.runTurn({ projectId: t.project.id, prompt: 'p', purpose: 'chat', saveToChat: true })
+    expect(outcome.ok).toBe(true)
+    expect(calls).toBeGreaterThan(0)
+    expect(svc.isActive(t.project.id)).toBe(false)
+  })
+
+  it('never rejects: a repository failure mid-turn becomes INTERNAL and frees the slot', async () => {
+    const t = setup(() => [sdk.delta('hi'), sdk.success('hi')])
+    const failingChat = { add: () => { throw new Error('SQLITE_BUSY') }, list: () => [] } as unknown as typeof t.chat
+    const svc = new TeamLeadService({ projects: t.projects, chat: failingChat, runner: { async *run() { yield sdk.success('hi') } }, emit: (e) => t.events.push(e) })
+    const outcome = await svc.runTurn({ projectId: t.project.id, prompt: 'p', purpose: 'chat', saveToChat: true })
+    expect(outcome).toMatchObject({ ok: false, code: 'INTERNAL' })
+    expect(t.events.find((e) => e.type === 'turn_error')).toMatchObject({ code: 'INTERNAL' })
+    expect(svc.isActive(t.project.id)).toBe(false)
+  })
+
+  it('blocks the Team Lead until the user decides on repo settings, and passes the decision to the runner', async () => {
+    const t = setup(() => [sdk.init('s'), sdk.success('ok')])
+    const unset = t.addProject({}, 'unset')
+    expect(() => t.service.send(unset.id, 'hi')).toThrow(/repository's Claude settings/i)
+    expect(t.requests).toHaveLength(0)
+    const outcome = await t.service.runTurn({ projectId: unset.id, prompt: 'p', purpose: 'chat', saveToChat: false })
+    expect(outcome).toMatchObject({ ok: false, code: 'TRUST_REQUIRED' })
+    expect(t.requests).toHaveLength(0)
+
+    t.projects.setRepoSettingsTrust(unset.id, 'untrusted')
+    t.service.send(unset.id, 'hi'); await t.done()
+    expect(t.requests[0]?.trustRepoSettings).toBe(false)
+
+    t.events.length = 0
+    t.projects.setRepoSettingsTrust(unset.id, 'trusted')
+    t.service.send(unset.id, 'again'); await t.done()
+    expect(t.requests[1]?.trustRepoSettings).toBe(true)
   })
 })

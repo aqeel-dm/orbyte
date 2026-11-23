@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { AUTH_HELP, useTeamLeadChat } from '@/hooks/use-team-lead-chat'
 import { cn } from '@/lib/utils'
 
-export function ChatTab({ projectId, disabled }: { projectId: string; disabled: boolean }) {
+export function ChatTab({ projectId, disabled, disabledReason }: { projectId: string; disabled: boolean; disabledReason: string }) {
   const chat = useTeamLeadChat(projectId)
   const [text, setText] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
@@ -51,7 +51,7 @@ export function ChatTab({ projectId, disabled }: { projectId: string; disabled: 
           rows={2}
           maxLength={20000}
           disabled={disabled}
-          placeholder={disabled ? 'This project is archived.' : 'Message the Team Lead (Enter to send, Shift+Enter for a new line)'}
+          placeholder={disabled ? disabledReason : 'Message the Team Lead (Enter to send, Shift+Enter for a new line)'}
           className="min-h-[3rem] flex-1 resize-none rounded-md border border-border bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"
         />
         {busy ? (

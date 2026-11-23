@@ -19,4 +19,5 @@ paths:
 - Return errors as `Result` with a stable `code`. Do not leak stack traces or internal paths to the renderer.
 - Do not loosen the CSP (`electron.vite.config.ts`) or the guards in `src/main/app/security.ts`, or add `openExternal`/navigation paths, without recording the change in `docs/SECURITY.md`.
 - Keep the Team Lead read-only. Do not change `src/main/modules/agents/team-lead/options.ts` to add tools, `allowedTools`, `bypassPermissions`, or remove `strictMcpConfig` / `mcp__*` from `disallowedTools` without updating `docs/SECURITY.md` and the options test.
+- Never load repo-owned Claude settings for a project unless `repoSettingsTrust === 'trusted'` (`options.ts` and the gates in `TeamLeadService`/`OnboardingService`). Never send raw SDK/runtime error text to the renderer; map it to a fixed message and log the detail in main.
 - Approval for execution must be a backend check against a stored record. Prompt text or permission modes are never the enforcement.

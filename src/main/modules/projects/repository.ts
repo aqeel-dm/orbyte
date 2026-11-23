@@ -24,6 +24,7 @@ const toProject = (r: Row): Project => ({
   isGitRepo: r.isGitRepo,
   status: r.status,
   onboardingStatus: r.onboardingStatus,
+  repoSettingsTrust: r.repoSettingsTrust,
   teamLeadSessionId: r.teamLeadSessionId,
   onboardingData: r.onboardingData ?? null,
   createdAt: r.createdAt,
@@ -86,6 +87,15 @@ export class ProjectRepository {
         .get()
       if (!row) return undefined
       this.event(tx, id, eventType, { status, ...payload })
+      return toProject(row)
+    })
+  }
+
+  setRepoSettingsTrust(id: string, trust: 'trusted' | 'untrusted'): Project | undefined {
+    return this.db.transaction((tx) => {
+      const row = tx.update(projects).set({ repoSettingsTrust: trust, updatedAt: Date.now() }).where(eq(projects.id, id)).returning().get()
+      if (!row) return undefined
+      this.event(tx, id, 'project.trust_changed', { trust })
       return toProject(row)
     })
   }

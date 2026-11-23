@@ -15,6 +15,13 @@
       "when": 1795440430523,
       "tag": "0001_chief_sauron",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795441320597,
+      "tag": "0002_clear_lightspeed",
+      "breakpoints": true
     }
   ]
 }

@@ -21,8 +21,11 @@ export function makeStack() {
   const handle = openDatabase(':memory:', resolve(__dirname, '../drizzle'))
   const projects = new ProjectRepository(handle.db)
   const chat = new ChatRepository(handle.db)
-  const addProject = (over: Partial<Parameters<ProjectRepository['create']>[0]> = {}): Project =>
-    projects.create({ name: 'P', description: '', repoPath: `/tmp/${Math.random()}`, defaultBranch: 'main', isGitRepo: true, ...over })
+  /** Creates a project; trusted by default so Team Lead tests run. Pass trust: 'unset' for the gate. */
+  const addProject = (over: Partial<Parameters<ProjectRepository['create']>[0]> = {}, trust: 'unset' | 'trusted' | 'untrusted' = 'trusted'): Project => {
+    const p = projects.create({ name: 'P', description: '', repoPath: `/tmp/${Math.random()}`, defaultBranch: 'main', isGitRepo: true, ...over })
+    return trust === 'unset' ? p : projects.setRepoSettingsTrust(p.id, trust)!
+  }
   return { handle, projects, chat, addProject }
 }
 

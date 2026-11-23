@@ -1,9 +1,12 @@
-import { lstat, readdir, realpath, stat } from 'node:fs/promises'
+import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises'
 import { join, relative, sep } from 'node:path'
 import type { DiscoveryResult } from '@shared/schemas/onboarding'
 
 const MAX_DEPTH = 3
 const MAX_DIRS = 400
+const MAX_ENTRIES_PER_DIR = 5000
+const MAX_LIST = 100
+const WALK_DEADLINE_MS = 5000
 const MAX_CLAUDE_MD = 25
 const MAX_DOCS = 25
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'out', 'build', '.next', 'target', 'vendor', '.venv', '__pycache__'])
@@ -19,31 +22,34 @@ export async function discoverProject(repoPath: string): Promise<DiscoveryResult
   const root = await realpath(repoPath)
   const result: DiscoveryResult = {
     claudeMdFiles: [],
-    claudeDir: { exists: false, rules: [], skills: [], agents: [], settingsFiles: [], hasHooks: false },
+    claudeDir: { exists: false, rules: [], skills: [], agents: [], settingsFiles: [], hasHooks: false, riskySettingsKeys: [] },
     hasMcpConfig: false,
     docs: [],
     truncated: false
   }
 
-  const inside = (real: string): boolean => real === root || real.startsWith(root + sep)
+  const prefix = root.endsWith(sep) ? root : root + sep
+  const inside = (real: string): boolean => real === root || real.startsWith(prefix)
+  const deadline = Date.now() + WALK_DEADLINE_MS
 
   /** Returns the file size if `path` is a regular file whose real path stays inside the root. */
-  async function safeFileSize(path: string): Promise<number | null> {
+  async function safeFile(path: string): Promise<{ real: string; size: number } | null> {
     try {
       const real = await realpath(path)
       if (!inside(real)) return null
       const st = await stat(real)
-      return st.isFile() ? st.size : null
+      return st.isFile() ? { real, size: st.size } : null
     } catch {
       return null
     }
   }
+  const safeFileSize = async (path: string): Promise<number | null> => (await safeFile(path))?.size ?? null
 
   async function safeList(dir: string): Promise<string[]> {
     try {
       const real = await realpath(dir)
       if (!inside(real)) return []
-      return (await readdir(real)).sort()
+      return (await readdir(real)).sort().slice(0, MAX_LIST)
     } catch {
       return []
     }
@@ -52,17 +58,22 @@ export async function discoverProject(repoPath: string): Promise<DiscoveryResult
   // Walk the tree (bounded) for nested CLAUDE.md files and top-level docs.
   let dirsVisited = 0
   async function walk(dir: string, depth: number): Promise<void> {
-    if (dirsVisited >= MAX_DIRS) {
+    if (dirsVisited >= MAX_DIRS || Date.now() > deadline) {
       result.truncated = true
       return
     }
     dirsVisited++
     let names: string[]
     try {
-      names = (await readdir(dir)).sort()
+      names = await readdir(dir)
     } catch {
       return
     }
+    if (names.length > MAX_ENTRIES_PER_DIR) {
+      result.truncated = true
+      names = names.slice(0, MAX_ENTRIES_PER_DIR)
+    }
+    names.sort()
     for (const name of names) {
       const full = join(dir, name)
       let st
@@ -108,28 +119,36 @@ export async function discoverProject(repoPath: string): Promise<DiscoveryResult
     result.claudeDir.agents = (await safeList(join(claudeDir, 'agents'))).filter((n) => n.endsWith('.md'))
     result.claudeDir.settingsFiles = claudeEntries.filter((n) => /^settings(\.local)?\.json$/.test(n))
     // Presence only: settings are repo-owned and are not parsed or copied.
-    result.claudeDir.hasHooks = result.claudeDir.settingsFiles.length > 0 && (await hasHooksKey(claudeDir, result.claudeDir.settingsFiles, safeFileSize))
+    const risky = await riskyKeys(claudeDir, result.claudeDir.settingsFiles, safeFile)
+    result.claudeDir.riskySettingsKeys = risky
+    result.claudeDir.hasHooks = risky.includes('hooks')
   }
   if ((await safeFileSize(join(root, '.mcp.json'))) !== null) result.hasMcpConfig = true
 
   return result
 }
 
-async function hasHooksKey(
+/** Settings keys that can run code, redirect traffic or widen permissions. Names only; values are never read out. */
+const RISKY_KEYS = ['hooks', 'env', 'apiKeyHelper', 'statusLine', 'enabledPlugins', 'permissions']
+
+async function riskyKeys(
   dir: string,
   files: string[],
-  size: (p: string) => Promise<number | null>
-): Promise<boolean> {
-  const { readFile } = await import('node:fs/promises')
+  resolveFile: (p: string) => Promise<{ real: string; size: number } | null>
+): Promise<string[]> {
+  const found = new Set<string>()
   for (const f of files) {
-    const s = await size(join(dir, f))
-    if (s === null || s > 256 * 1024) continue
+    const file = await resolveFile(join(dir, f))
+    if (file === null || file.size > 256 * 1024) continue
     try {
-      const parsed: unknown = JSON.parse(await readFile(join(dir, f), 'utf8'))
-      if (typeof parsed === 'object' && parsed !== null && 'hooks' in parsed) return true
+      // Read through the already-resolved, containment-checked path (not the original path).
+      const parsed: unknown = JSON.parse(await readFile(file.real, 'utf8'))
+      if (typeof parsed === 'object' && parsed !== null) {
+        for (const key of RISKY_KEYS) if (key in parsed) found.add(key)
+      }
     } catch {
-      /* unreadable or invalid JSON: treat as no hooks info */
+      /* unreadable or invalid JSON: treat as no information */
     }
   }
-  return false
+  return RISKY_KEYS.filter((k) => found.has(k))
 }

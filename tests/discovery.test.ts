@@ -29,6 +29,16 @@ describe('discoverProject', () => {
     expect(d.docs.map((f) => f.path).sort()).toEqual(['README.md', 'docs/ARCHITECTURE.md'])
   })
 
+  it('reports which risky settings keys are present (names only)', async () => {
+    const root = tempDir()
+    write(root, '.claude/settings.json', JSON.stringify({ hooks: {}, env: { X: 'secret-value' }, model: 'x' }))
+    write(root, '.claude/settings.local.json', JSON.stringify({ apiKeyHelper: 'echo k', permissions: { allow: [] } }))
+    const d = await discoverProject(root)
+    expect(d.claudeDir.riskySettingsKeys).toEqual(['hooks', 'env', 'apiKeyHelper', 'permissions'])
+    expect(JSON.stringify(d)).not.toContain('secret-value')
+    expect(d.claudeDir.hasHooks).toBe(true)
+  })
+
   it('reports hooks only when a settings file has a hooks key, and handles invalid JSON', async () => {
     const root = tempDir()
     write(root, '.claude/settings.json', '{ not json')
@@ -69,5 +79,14 @@ describe('discoverProject', () => {
     const before = readdirSync(root).join()
     await discoverProject(root)
     expect(readdirSync(root).join()).toBe(before)
+  })
+})
+
+describe('discovery hardening', () => {
+  it('caps list sizes and entries per directory, and flags truncation', async () => {
+    const root = tempDir()
+    for (let i = 0; i < 150; i++) write(root, `.claude/skills/s${String(i).padStart(3, '0')}/SKILL.md`)
+    const d = await discoverProject(root)
+    expect(d.claudeDir.skills.length).toBe(100)
   })
 })

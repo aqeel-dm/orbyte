@@ -15,17 +15,19 @@ Invoke channels (renderer to main), defined in `src/shared/constants/ipc.ts`; th
 | `projects.pickDirectory()` | `projects:pickDirectory` | none | `{cancelled: true}` or `{cancelled: false, token, path, suggestedName, inspection}` |
 | `projects.register(input)` | `projects:register` | `{token (<=64), name (1-100), description (<=1000)}` | `Project` |
 | `projects.archive(id)` / `restore(id)` | `projects:archive` / `projects:restore` | `{id}` | `Project` |
+| `projects.setTrust(id, trust)` | `projects:setTrust` | `{id, trust: 'trusted' or 'untrusted'}` | `Project` |
+| `projects.discover(id)` | `projects:discover` | `{id}` | `DiscoveryResult` (read-only listing of instruction files and risky settings key names) |
 | `onboarding.start(projectId)` | `onboarding:start` | `{projectId}` | `Project` (now `in_progress`; the work continues in the background) |
 | `teamLead.send(projectId, text)` | `teamLead:send` | `{projectId, text (1-20000, trimmed)}` | `{turnId, userMessage}` (the reply streams as events) |
 | `teamLead.interrupt(projectId)` | `teamLead:interrupt` | `{projectId}` | `null` |
 | `teamLead.history(projectId)` | `teamLead:history` | `{projectId}` | `ChatMessage[]` oldest first |
 
 ## Push events (main to renderer)
-One fixed channel, `events:app`. The renderer subscribes with `window.orbyte.onEvent(listener)` (returns an unsubscribe function). The preload validates every payload with `appEventSchema` and drops invalid ones. Every event carries `projectId`; the renderer must filter by it. Types: `turn_started` (purpose `chat|onboarding`), `text_delta`, `tool_activity`, `turn_completed` (`messageId` or null), `turn_error` (`code`, `message`), `project_updated`.
+One fixed channel, `events:app`. The renderer subscribes with `window.orbyte.onEvent(listener)` (returns an unsubscribe function). The preload validates every payload with `appEventSchema` and drops invalid ones. Every event carries `projectId`; the renderer must filter by it. `archive`, `restore` and `setTrust` also push `project_updated` so every open view refreshes. Types: `turn_started` (purpose `chat|onboarding`), `text_delta`, `tool_activity`, `turn_completed` (`messageId` or null), `turn_error` (`code`, `message`), `project_updated`.
 
 ## Error codes in use
-Invoke results: `INVALID_INPUT`, `FORBIDDEN` (untrusted sender frame), `INVALID_TOKEN` (unknown, expired, evicted or used), `INVALID_DIRECTORY`, `DIALOG_BUSY`, `ALREADY_REGISTERED`, `NOT_FOUND`, `PROJECT_ARCHIVED`, `TURN_IN_PROGRESS`, `ALREADY_RUNNING` (onboarding), `INTERNAL`.
-Turn errors (events and stored onboarding errors): `AUTH_REQUIRED`, `SESSION_NOT_FOUND` (handled internally by retrying fresh; surfaces only if the retry also fails), `INTERRUPTED`, `NO_RESULT`, `AGENT_ERROR`, `ONBOARDING_ERROR`.
+Invoke results: `INVALID_INPUT`, `FORBIDDEN` (untrusted sender frame), `INVALID_TOKEN` (unknown, expired, evicted or used), `INVALID_DIRECTORY`, `DIALOG_BUSY`, `ALREADY_REGISTERED`, `NOT_FOUND`, `PROJECT_ARCHIVED`, `TURN_IN_PROGRESS`, `ONBOARDING_IN_PROGRESS` (chat while onboarding runs), `TRUST_REQUIRED` (repo-settings trust is `unset`), `ALREADY_RUNNING` (onboarding), `FORBIDDEN`, `INTERNAL`.
+Turn errors (events and stored onboarding errors): `AUTH_REQUIRED`, `SESSION_NOT_FOUND` (handled internally by retrying fresh; surfaces only if the retry also fails), `INTERRUPTED`, `TIMEOUT`, `NO_RESULT`, `TRUST_REQUIRED`, `AGENT_ERROR`, `ONBOARDING_ERROR`.
 
 ## Adding a channel
 1. Add the channel name to `IPC` in `shared/constants/ipc.ts`.

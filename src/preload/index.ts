@@ -11,7 +11,9 @@ const api: OrbyteApi = {
     pickDirectory: () => ipcRenderer.invoke(IPC.projects.pickDirectory),
     register: (input) => ipcRenderer.invoke(IPC.projects.register, input),
     archive: (id) => ipcRenderer.invoke(IPC.projects.archive, { id }),
-    restore: (id) => ipcRenderer.invoke(IPC.projects.restore, { id })
+    restore: (id) => ipcRenderer.invoke(IPC.projects.restore, { id }),
+    setTrust: (id, trust) => ipcRenderer.invoke(IPC.projects.setTrust, { id, trust }),
+    discover: (id) => ipcRenderer.invoke(IPC.projects.discover, { id })
   },
   onboarding: {
     start: (projectId) => ipcRenderer.invoke(IPC.onboarding.start, { projectId })

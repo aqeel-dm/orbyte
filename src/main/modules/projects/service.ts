@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { realpath, stat } from 'node:fs/promises'
 import { basename } from 'node:path'
 import { AppError } from '@shared/types/result'
+import type { DiscoveryResult } from '@shared/schemas/onboarding'
 import type { PickDirectoryResult, Project, RegisterProjectInput, RepoInspection } from '@shared/schemas/project'
 import type { ProjectRepository } from './repository'
 
@@ -17,6 +18,7 @@ interface Pending {
 export interface ProjectServiceDeps {
   repo: ProjectRepository
   inspect: (dir: string) => Promise<RepoInspection>
+  discover?: (dir: string) => Promise<DiscoveryResult>
   now?: () => number
 }
 
@@ -95,6 +97,18 @@ export class ProjectService {
       defaultBranch: inspection.defaultBranch,
       isGitRepo: inspection.isGitRepo
     })
+  }
+
+  setTrust(id: string, trust: 'trusted' | 'untrusted'): Project {
+    const project = this.deps.repo.setRepoSettingsTrust(id, trust)
+    if (!project) throw new AppError('NOT_FOUND', 'Project not found.')
+    return project
+  }
+
+  /** Read-only: shows what the repository would bring along before the user decides on trust. */
+  async discover(id: string): Promise<DiscoveryResult> {
+    if (!this.deps.discover) throw new AppError('INTERNAL', 'Discovery is not available.')
+    return this.deps.discover(this.get(id).repoPath)
   }
 
   archive(id: string): Project {

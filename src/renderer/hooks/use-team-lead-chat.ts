@@ -34,8 +34,10 @@ export function useTeamLeadChat(projectId: string) {
       case 'tool_activity':
         if (e.turnId === turnRef.current) setTools((t) => (t.includes(e.tool) ? t : [...t, e.tool])); break
       case 'turn_completed':
+        if (turnRef.current && e.turnId !== turnRef.current) break // a different turn's event: ignore
         setWorking(null); setDraft(''); void loadHistory(); break
       case 'turn_error':
+        if (turnRef.current && e.turnId !== turnRef.current) break
         setWorking(null); setDraft(''); setError({ code: e.code, message: e.message }); void loadHistory(); break
     }
   }), [projectId, loadHistory])

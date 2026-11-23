@@ -17,6 +17,8 @@ export const projects = sqliteTable('projects', {
   /** Onboarding findings and Team Lead summary. Orbyte-owned; never written into the repo. */
   onboardingData: text('onboarding_data', { mode: 'json' }).$type<OnboardingData>(),
   status: text('status', { enum: ['active', 'archived'] }).notNull().default('active'),
+  /** unset = Team Lead blocked until the user decides; trusted loads repo settings; untrusted ignores them. */
+  repoSettingsTrust: text('repo_settings_trust', { enum: ['unset', 'trusted', 'untrusted'] }).notNull().default('unset'),
   onboardingStatus: text('onboarding_status', { enum: ['pending', 'in_progress', 'ready', 'failed'] })
     .notNull()
     .default('pending'),

@@ -63,7 +63,7 @@ Read-only agents in `.claude/agents/` (Read, Grep, Glob only): `architecture-rev
 - The renderer never passes filesystem paths. Directories are picked in main and registered by single-use token.
 - The Agent SDK is ESM-only; main is CommonJS, so load it only via `sdk-loader.ts` (dynamic `import()`), kept external.
 - Team Lead options (`modules/agents/team-lead/options.ts`) are the read-only enforcement: never add tools, `allowedTools`, bypass modes, or drop `strictMcpConfig`/`mcp__*` (your personal MCP tools leak in otherwise). Tests assert this.
-- Team Lead auth uses the user's existing Claude Code login (user's choice; see `docs/SECURITY.md` policy caveat). It loads user + project + local settings, so a registered repo's hooks run. It can read `.env` files in the project.
+- Team Lead auth uses the user's existing Claude Code login (user's choice; see `docs/SECURITY.md` policy caveat). Repo settings (hooks) load only after the user marks the project `trusted` (`repoSettingsTrust`); `unset` blocks the Team Lead in main. It can read `.env` files in the project.
 - End-to-end check recipe: `docs/DEVELOPMENT.md`.
-- Known gaps (see `docs/SECURITY.md`): `style-src 'unsafe-inline'` in prod CSP, `repoPath` revalidation before developer agents, heuristic auth-error detection, no packaging config.
+- Known gaps (see `docs/SECURITY.md`): `style-src 'unsafe-inline'` in prod CSP, `repoPath` revalidation before developer agents, heuristic auth-error detection, no packaging config. Never send raw SDK/runtime error text to the renderer (map to fixed messages; log in main).
 - CSP is injected at build time from `electron.vite.config.ts` (strict in prod, looser in dev). Navigation/permission guards live in `src/main/app/security.ts`.

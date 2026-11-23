@@ -6,7 +6,9 @@ export const IPC = {
     pickDirectory: 'projects:pickDirectory',
     register: 'projects:register',
     archive: 'projects:archive',
-    restore: 'projects:restore'
+    restore: 'projects:restore',
+    setTrust: 'projects:setTrust',
+    discover: 'projects:discover'
   },
   onboarding: {
     start: 'onboarding:start'

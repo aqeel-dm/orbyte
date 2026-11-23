@@ -11,7 +11,9 @@ export const discoveryResultSchema = z.object({
     skills: z.array(z.string()),
     agents: z.array(z.string()),
     settingsFiles: z.array(z.string()),
-    hasHooks: z.boolean()
+    hasHooks: z.boolean(),
+    /** Settings keys present in repo settings files that can run code or change behavior (names only). */
+    riskySettingsKeys: z.array(z.string()).optional()
   }),
   hasMcpConfig: z.boolean(),
   docs: z.array(fileInfo),

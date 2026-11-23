@@ -1,3 +1,4 @@
+import type { DiscoveryResult } from '../schemas/onboarding'
 import type { ListProjectsInput, PickDirectoryResult, Project, RegisterProjectInput } from '../schemas/project'
 import type { AppEvent, ChatMessage, SendMessageResult } from '../schemas/team-lead'
 import type { Result } from './result'
@@ -11,6 +12,10 @@ export interface OrbyteApi {
     register(input: RegisterProjectInput): Promise<Result<Project>>
     archive(id: string): Promise<Result<Project>>
     restore(id: string): Promise<Result<Project>>
+    /** Decide whether the repository's own Claude settings (hooks etc.) may load for the Team Lead. */
+    setTrust(id: string, trust: 'trusted' | 'untrusted'): Promise<Result<Project>>
+    /** Read-only listing of repo-owned instruction files and risky settings keys. */
+    discover(id: string): Promise<Result<DiscoveryResult>>
   }
   onboarding: {
     /** Starts onboarding in the background; progress arrives as events. */

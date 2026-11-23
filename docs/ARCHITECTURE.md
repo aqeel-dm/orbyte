@@ -38,8 +38,8 @@ Source is the reference; if this document disagrees with the code, fix the docum
 
 ## Data flow: Team Lead chat turn (Implemented)
 1. Renderer `teamLead.send(projectId, text)`; `handle()` checks the sender and validates input.
-2. `TeamLeadService.send` rejects unknown or archived projects and a second concurrent turn for the same project, stores the user message, and starts the turn in the background; the call returns `{turnId, userMessage}` immediately.
-3. `runTurn` makes one SDK `query()` through `TeamLeadRunner` with `resume: <stored session id>` and the read-only options. **Decision:** one query per turn (not a long-lived process), so restart-resume and normal turns are the same code path and nothing assumes a process survived.
+2. `TeamLeadService.send` rejects unknown or archived projects, projects whose repo-settings trust is `unset`, chat during onboarding, and a second concurrent turn for the same project, stores the user message, and starts the turn in the background; the call returns `{turnId, userMessage}` immediately.
+3. `runTurn` makes one SDK `query()` through `TeamLeadRunner` with `resume: <stored session id>` and the read-only options (`settingSources` is `['user','project','local']` only when the project is trusted, else `['user']`). It never rejects, aborts after 15 minutes, and `shutdown()` aborts active turns on quit. **Decision:** one query per turn (not a long-lived process), so restart-resume and normal turns are the same code path and nothing assumes a process survived.
 4. Raw SDK messages are mapped to signals; text deltas and tool names are emitted as `events:app` pushes (`turn_started`, `text_delta`, `tool_activity`). The session id from the init message is saved on the project.
 5. On success the assistant text is stored and `turn_completed` is emitted. On failure `turn_error` is emitted with a code. An unknown session id clears the stored id and retries once without `resume`. An interrupt aborts the query via `AbortController` and keeps real partial output.
 

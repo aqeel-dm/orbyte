@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { AUTH_HELP } from '@/hooks/use-team-lead-chat'
+import { TrustPanel } from './trust-panel'
 
 const statusLabel = { pending: 'Not onboarded', in_progress: 'Onboarding…', ready: 'Ready', failed: 'Onboarding failed' } as const
 
@@ -12,6 +13,7 @@ export function OverviewTab({ project, onChanged }: { project: Project; onChange
   const [error, setError] = useState<string | null>(null)
   const data = project.onboardingData
   const running = project.onboardingStatus === 'in_progress'
+  const needsTrust = project.repoSettingsTrust === 'unset'
 
   async function start() {
     setError(null)
@@ -31,13 +33,15 @@ export function OverviewTab({ project, onChanged }: { project: Project; onChange
         </div>
       </Card>
 
+      <TrustPanel project={project} onChanged={onChanged} />
+
       <Card className="p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <h2 className="font-semibold">Onboarding</h2>
             <Badge variant={project.onboardingStatus === 'ready' ? 'success' : project.onboardingStatus === 'failed' ? 'destructive' : 'default'}>{statusLabel[project.onboardingStatus]}</Badge>
           </div>
-          <Button size="sm" onClick={start} disabled={running || project.status === 'archived'}>
+          <Button size="sm" onClick={start} disabled={running || needsTrust || project.status === 'archived'}>
             {running ? <><Loader2 className="h-4 w-4 animate-spin" />Running</> : project.onboardingStatus === 'pending' ? 'Start onboarding' : 'Re-run onboarding'}
           </Button>
         </div>
@@ -56,7 +60,7 @@ export function OverviewTab({ project, onChanged }: { project: Project; onChange
             {data.discovery.docs.map((f) => <li key={f.path} className="font-mono text-xs text-muted-foreground">{f.path}</li>)}
             {data.discovery.claudeMdFiles.length === 0 && !data.discovery.claudeDir.exists && data.discovery.docs.length === 0 && <li className="text-muted-foreground">No CLAUDE.md, .claude/ or documentation found.</li>}
           </ul>
-          {data.discovery.claudeDir.hasHooks && <p className="mt-2 text-xs text-warning">This repository configures Claude Code hooks. They run when the Team Lead works in it, so only register repositories you trust.</p>}
+          {(data.discovery.claudeDir.riskySettingsKeys?.length ?? 0) > 0 && <p className="mt-2 text-xs text-warning">This repository's Claude settings include: {data.discovery.claudeDir.riskySettingsKeys?.join(', ')}. These can run code or change behavior when the Team Lead works in it (only if you trust the repository).</p>}
           {data.discovery.truncated && <p className="mt-2 text-xs text-muted-foreground">Discovery was limited to keep it bounded.</p>}
         </Card>
       )}

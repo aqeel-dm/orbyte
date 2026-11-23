@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, dialog } from 'electron'
 import { openDatabase, type DbHandle } from './database/client'
 import { inspectRepository } from './modules/git/inspect'
 import { ChatRepository } from './modules/agents/team-lead/chat-repository'
@@ -17,6 +17,10 @@ import { IPC } from '@shared/constants/ipc'
 import type { AppEvent } from '@shared/schemas/team-lead'
 
 let dbHandle: DbHandle | undefined
+let teamLeadService: TeamLeadService | undefined
+let quitting = false
+
+process.on('unhandledRejection', (reason) => console.error('[main] unhandled rejection', reason))
 
 async function bootstrap(): Promise<void> {
   const migrations = app.isPackaged ? join(process.resourcesPath, 'drizzle') : join(app.getAppPath(), 'drizzle')
@@ -30,14 +34,15 @@ async function bootstrap(): Promise<void> {
   const emit = (event: AppEvent): void => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IPC.events.app, event)
   }
-  const teamLead = new TeamLeadService({ projects: projectRepo, chat: new ChatRepository(dbHandle.db), runner: createSdkRunner(), emit })
+  const teamLead = (teamLeadService = new TeamLeadService({ projects: projectRepo, chat: new ChatRepository(dbHandle.db), runner: createSdkRunner(), emit }))
   const onboarding = new OnboardingService({ projects: projectRepo, teamLead, discover: discoverProject, emit })
   onboarding.recoverInterrupted()
 
   registerProjectHandlers({
-    projects: new ProjectService({ repo: projectRepo, inspect: inspectRepository }),
+    projects: new ProjectService({ repo: projectRepo, inspect: inspectRepository, discover: discoverProject }),
     onboarding,
-    teamLead
+    teamLead,
+    emit
   })
   installAppSecurity(appEntryUrl)
   createMainWindow()
@@ -51,7 +56,11 @@ else {
     if (win?.isMinimized()) win.restore()
     win?.focus()
   })
-  void app.whenReady().then(bootstrap)
+  void app.whenReady().then(bootstrap).catch((err) => {
+    console.error('[main] startup failed', err)
+    dialog.showErrorBox('Orbyte could not start', 'The database or application failed to initialize. See the application log for details.')
+    app.exit(1)
+  })
   // Closing the window must not end the app on macOS (agents keep running).
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit()
@@ -59,5 +68,16 @@ else {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
   })
-  app.on('before-quit', () => dbHandle?.close())
+  // Abort in-flight Team Lead turns (and their subprocesses) before the database closes.
+  app.on('before-quit', (event) => {
+    if (quitting) return
+    quitting = true
+    event.preventDefault()
+    void (teamLeadService?.shutdown() ?? Promise.resolve())
+      .catch((err) => console.error('[main] shutdown failed', err))
+      .finally(() => {
+        dbHandle?.close()
+        app.quit()
+      })
+  })
 }

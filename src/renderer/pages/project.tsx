@@ -28,7 +28,7 @@ export function ProjectPage() {
         {comingSoon.map((c) => <span key={c.label} className="cursor-not-allowed px-3 py-2 text-sm text-muted-foreground/50" title={`Available in ${c.phase}`}>{c.label} <span className="text-xs">({c.phase})</span></span>)}
       </nav>
       <div className="mt-4 min-h-0 flex-1">
-        {tab === 'overview' ? <OverviewTab project={project} onChanged={refresh} /> : <ChatTab projectId={project.id} disabled={project.status === 'archived'} />}
+        {tab === 'overview' ? <OverviewTab project={project} onChanged={refresh} /> : <ChatTab projectId={project.id} disabled={project.status === 'archived' || project.repoSettingsTrust === 'unset'} disabledReason={project.status === 'archived' ? 'This project is archived.' : "Decide on this repository's Claude settings in the Overview tab first."} />}
       </div>
     </div>
   )

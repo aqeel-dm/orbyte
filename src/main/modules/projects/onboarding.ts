@@ -24,14 +24,19 @@ export function parseOnboardingOutput(text: string): { summary: string; workflow
   return { summary: summary || text.trim(), ...(guidance ? { workflowGuidance: guidance } : {}) }
 }
 
+/** Names come from the repository and are untrusted: strip anything unusual and bound length and count. */
+const clean = (s: string): string => s.replace(/[^\w.\-/@+ ]/g, '?').slice(0, 80)
+const list = (items: string[]): string =>
+  items.length ? items.slice(0, 25).map(clean).join(', ') + (items.length > 25 ? ', …' : '') : 'none'
+
 export function summarizeDiscovery(d: DiscoveryResult): string {
   const lines: string[] = []
-  for (const f of d.claudeMdFiles) lines.push(`- ${f.path} (CLAUDE.md, ${f.bytes} bytes)`)
+  for (const f of d.claudeMdFiles) lines.push(`- ${clean(f.path)} (CLAUDE.md, ${f.bytes} bytes)`)
   if (d.claudeDir.exists) {
-    lines.push(`- .claude/ (rules: ${d.claudeDir.rules.join(', ') || 'none'}; skills: ${d.claudeDir.skills.join(', ') || 'none'}; agents: ${d.claudeDir.agents.join(', ') || 'none'}; settings: ${d.claudeDir.settingsFiles.join(', ') || 'none'}; hooks configured: ${d.claudeDir.hasHooks})`)
+    lines.push(`- .claude/ (rules: ${list(d.claudeDir.rules)}; skills: ${list(d.claudeDir.skills)}; agents: ${list(d.claudeDir.agents)}; settings: ${list(d.claudeDir.settingsFiles)}; hooks configured: ${d.claudeDir.hasHooks})`)
   }
   if (d.hasMcpConfig) lines.push('- .mcp.json (MCP configuration present)')
-  for (const f of d.docs) lines.push(`- ${f.path} (${f.bytes} bytes)`)
+  for (const f of d.docs) lines.push(`- ${clean(f.path)} (${f.bytes} bytes)`)
   return lines.length ? lines.join('\n') : '- (no CLAUDE.md, .claude/ or documentation files were found)'
 }
 
@@ -48,13 +53,17 @@ export class OnboardingService {
     const project = this.deps.projects.get(projectId)
     if (!project) throw new AppError('NOT_FOUND', 'Project not found.')
     if (project.status === 'archived') throw new AppError('PROJECT_ARCHIVED', 'This project is archived. Restore it first.')
+    if (project.repoSettingsTrust === 'unset') {
+      throw new AppError('TRUST_REQUIRED', "Decide whether to use this repository's Claude settings before onboarding.")
+    }
     if (project.onboardingStatus === 'in_progress' || this.deps.teamLead.isActive(projectId)) {
       throw new AppError('ALREADY_RUNNING', 'The Team Lead is already working on this project.')
     }
     const started = this.deps.projects.setOnboarding(projectId, 'in_progress', { startedAt: Date.now() }, 'onboarding.started')
     if (!started) throw new AppError('NOT_FOUND', 'Project not found.')
-    this.deps.emit({ type: 'project_updated', projectId })
-    void this.run(started)
+    this.safeEmit(projectId)
+    // run() handles its own failures; the catch is a last-resort guard against an unhandled rejection.
+    void this.run(started).catch((err) => console.error('[onboarding] unexpected failure', err))
     return started
   }
 
@@ -64,7 +73,7 @@ export class OnboardingService {
     try {
       data.discovery = await this.deps.discover(project.repoPath)
       this.deps.projects.setOnboarding(id, 'in_progress', data, 'onboarding.discovered')
-      this.deps.emit({ type: 'project_updated', projectId: id })
+      this.safeEmit(id)
 
       const outcome = await this.deps.teamLead.runTurn({
         projectId: id,
@@ -81,9 +90,27 @@ export class OnboardingService {
         this.deps.projects.setOnboarding(id, 'failed', { ...data, error: { code: outcome.code, message: outcome.message } }, 'onboarding.failed', { code: outcome.code })
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      this.deps.projects.setOnboarding(id, 'failed', { ...data, error: { code: 'ONBOARDING_ERROR', message } }, 'onboarding.failed', { code: 'ONBOARDING_ERROR' })
+      console.error(`[onboarding] failed for project ${id}`, err)
+      try {
+        this.deps.projects.setOnboarding(
+          id,
+          'failed',
+          { ...data, error: { code: 'ONBOARDING_ERROR', message: 'Onboarding failed unexpectedly. See the application log.' } },
+          'onboarding.failed',
+          { code: 'ONBOARDING_ERROR' }
+        )
+      } catch (inner) {
+        console.error(`[onboarding] could not record failure for project ${id}`, inner)
+      }
     }
-    this.deps.emit({ type: 'project_updated', projectId: id })
+    this.safeEmit(id)
+  }
+
+  private safeEmit(projectId: string): void {
+    try {
+      this.deps.emit({ type: 'project_updated', projectId })
+    } catch (err) {
+      console.error('[onboarding] failed to emit event', err)
+    }
   }
 }
