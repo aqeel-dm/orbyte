@@ -1,6 +1,6 @@
 # Git workflow rules
 
-- Make small, focused commits with a clear message. Use a branch per phase or feature; do not work on `main` for multi-step phases.
+- Make small, focused commits with a clear message. Work directly on `main` (the user's decision; no per-phase branches). Keep `main` passing `pnpm typecheck` and `pnpm test` at every commit.
 - Commit and push only when asked.
 - Never commit `.claude/settings.local.json`, `CLAUDE.local.md`, `.env*`, secrets, `node_modules/` or `out/`.
 - Do not force-push, rewrite history, or reset without being asked.

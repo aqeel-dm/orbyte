@@ -6,7 +6,7 @@ Stack: Electron, React 19 + TypeScript (strict) + Vite (electron-vite), Tailwind
 
 ## Status
 
-**Phases 1 and 2 are implemented** (Phase 2 on branch `phase-2`). Implemented: secure Electron shell, typed IPC with sender check, SQLite + migrations, dashboard, project registration, archive/restore, project page, onboarding (read-only discovery + Team Lead summary), and a read-only Team Lead chat on the Claude Agent SDK with streaming, persisted history and session resume.
+**Phases 1 and 2 are implemented** (merged into `main`). Implemented: secure Electron shell, typed IPC with sender check, SQLite + migrations, dashboard, project registration, archive/restore, project page, onboarding (read-only discovery + Team Lead summary), and a read-only Team Lead chat on the Claude Agent SDK with streaming, persisted history and session resume.
 
 Not built: tasks and Team Lead task tools, developer agents, terminals, approvals, orchestration. Phase 3 (tasks and orchestration) is next but **must not start without explicit user authorization**. Do not implement future phases, add their dependencies or tables, or describe them as existing. Details: @docs/ROADMAP.md
 

@@ -5,7 +5,7 @@ Each phase must leave the app runnable. Do not start a phase without explicit au
 | # | Phase | Status | Summary |
 |---|---|---|---|
 | 1 | Foundation | **Complete** (commit `9d62d2e`) | Electron shell, secure preload and typed IPC, SQLite + Drizzle migrations, dashboard, project registration and persistence |
-| 2 | Project workspace, onboarding, Team Lead chat | **Implemented on branch `phase-2`** (verification caveats below) | Project page, onboarding lifecycle, discovery of CLAUDE.md and `.claude/`, Team Lead via Claude Agent SDK, session persistence and resume, streaming chat |
+| 2 | Project workspace, onboarding, Team Lead chat | **Complete** (merged into `main`) (verification caveats below) | Project page, onboarding lifecycle, discovery of CLAUDE.md and `.claude/`, Team Lead via Claude Agent SDK, session persistence and resume, streaming chat |
 | 3 | Tasks and orchestration | Not started | Task model, backlog UI, dependencies, validated state machine, Team Lead task tools, orchestrator, persistent event history |
 | 4 | Developer agent runtime | Not started | Claude Code CLI in node-pty, git worktrees, xterm.js terminals, agent persistence |
 | 5 | Planning and approval | Not started | Plan capture and versioning, Team Lead review, backend-enforced approval gate |
