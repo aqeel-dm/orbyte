@@ -4,9 +4,17 @@ import type { RepoInspection } from '@shared/schemas/project'
 
 const run = promisify(execFile)
 
+// Repository config is untrusted: disable fsmonitor (it can run programs) and never prompt or lock.
+const HARDENING = ['-c', 'core.fsmonitor=false']
+
 async function git(cwd: string, args: string[]): Promise<string | null> {
   try {
-    const { stdout } = await run('git', args, { cwd, timeout: 10_000, windowsHide: true })
+    const { stdout } = await run('git', [...HARDENING, ...args], {
+      cwd,
+      timeout: 10_000,
+      windowsHide: true,
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' }
+    })
     return stdout.trim()
   } catch {
     return null

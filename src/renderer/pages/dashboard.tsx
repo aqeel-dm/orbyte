@@ -19,13 +19,20 @@ function Stat({ label, value, note }: { label: string; value: string | number; n
 }
 
 export function DashboardPage() {
-  const { projects, loading, error, refresh } = useProjects()
+  const [showArchived, setShowArchived] = useState(false)
+  const { projects, loading, error, refresh } = useProjects(showArchived)
   const [open, setOpen] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  async function remove(p: Project) {
-    if (!window.confirm(`Remove "${p.name}" from Orbyte? Your repository files are not touched.`)) return
-    const res = await window.orbyte.projects.remove(p.id)
+  async function archive(p: Project) {
+    if (!window.confirm(`Archive "${p.name}"? It is hidden but its history is kept, and your repository files are not touched.`)) return
+    const res = await window.orbyte.projects.archive(p.id)
+    setActionError(res.ok ? null : res.error.message)
+    void refresh()
+  }
+
+  async function restore(p: Project) {
+    const res = await window.orbyte.projects.restore(p.id)
     setActionError(res.ok ? null : res.error.message)
     void refresh()
   }
@@ -41,13 +48,18 @@ export function DashboardPage() {
       </header>
 
       <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Projects" value={projects.length} />
+        <Stat label="Projects" value={projects.filter((p) => p.status === 'active').length} />
         <Stat label="Team Leads" value="—" note="Phase 2" />
         <Stat label="Developer agents" value="—" note="Phase 4" />
         <Stat label="Pending approvals" value="—" note="Phase 5" />
       </section>
 
-      <h2 className="mb-3 mt-8 text-sm font-medium text-muted-foreground">Projects</h2>
+      <div className="mb-3 mt-8 flex items-center justify-between">
+        <h2 className="text-sm font-medium text-muted-foreground">Projects</h2>
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+          <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />Show archived
+        </label>
+      </div>
       {(error || actionError) && <p role="alert" className="mb-3 text-sm text-destructive">{error ?? actionError}</p>}
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading…</div>
@@ -58,7 +70,7 @@ export function DashboardPage() {
           <Button onClick={() => setOpen(true)}><FolderPlus className="h-4 w-4" />Register your first project</Button>
         </Card>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2">{projects.map((p) => <ProjectCard key={p.id} project={p} onRemove={remove} />)}</div>
+        <div className="grid gap-3 md:grid-cols-2">{projects.map((p) => <ProjectCard key={p.id} project={p} onArchive={archive} onRestore={restore} />)}</div>
       )}
 
       <RegisterProjectDialog open={open} onOpenChange={setOpen} onRegistered={refresh} />

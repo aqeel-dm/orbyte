@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { AppError } from '../src/shared/types/result'
-import { registerProjectInputSchema, removeProjectInputSchema } from '../src/shared/schemas/project'
+import { projectIdSchema, registerProjectInputSchema } from '../src/shared/schemas/project'
 import { MAX_PENDING_TOKENS } from '../src/main/modules/projects/service'
 import { makeService, tempDir } from './helpers'
 
@@ -45,13 +45,24 @@ describe('ProjectService', () => {
     expect(await codeOf(service.prepare('/definitely/not/here'))).toBe('INVALID_DIRECTORY')
   })
 
-  it('removes projects and records an activity event on registration', async () => {
-    const { service, handle } = makeService()
+  it('archives and restores instead of deleting, hiding archived projects by default', async () => {
+    const { service } = makeService()
     const p = await service.register({ token: (await service.prepare(tempDir())).token, name: 'A', description: '' })
-    service.remove(p.id)
+    expect(service.archive(p.id).status).toBe('archived')
     expect(service.list()).toEqual([])
-    expect(() => service.remove(p.id)).toThrow(AppError)
-    handle.close()
+    expect(service.list(true).map((x) => x.id)).toEqual([p.id])
+    expect(service.restore(p.id).status).toBe('active')
+    expect(service.list().map((x) => x.id)).toEqual([p.id])
+    expect(() => service.archive('missing')).toThrow(AppError)
+  })
+
+  it('refuses to re-register an archived directory and says to restore it', async () => {
+    const { service } = makeService()
+    const dir = tempDir()
+    const p = await service.register({ token: (await service.prepare(dir)).token, name: 'A', description: '' })
+    service.archive(p.id)
+    const again = await service.prepare(dir)
+    await expect(service.register({ token: again.token, name: 'B', description: '' })).rejects.toThrow(/archived/i)
   })
 })
 
@@ -83,8 +94,8 @@ describe('IPC input schema', () => {
   it('limits token and id length', () => {
     const long = 'x'.repeat(65)
     expect(registerProjectInputSchema.safeParse({ token: long, name: 'ok' }).success).toBe(false)
-    expect(removeProjectInputSchema.safeParse({ id: long }).success).toBe(false)
-    expect(removeProjectInputSchema.safeParse({ id: 'x'.repeat(64) }).success).toBe(true)
+    expect(projectIdSchema.safeParse({ id: long }).success).toBe(false)
+    expect(projectIdSchema.safeParse({ id: 'x'.repeat(64) }).success).toBe(true)
   })
 
   it('requires a non-empty name and defaults description', () => {
