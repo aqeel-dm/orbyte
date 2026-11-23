@@ -2,13 +2,13 @@
 
 Local-first Electron desktop app that will coordinate multiple Claude Code developer agents across software projects. Single user, no remote infrastructure (no Docker, Redis, Postgres or HTTP backend).
 
-Stack: Electron, React 19 + TypeScript (strict) + Vite (electron-vite), Tailwind v4 + shadcn-style components, SQLite (better-sqlite3) + Drizzle, Zod, Vitest. Planned and not installed: Claude Agent SDK, node-pty, xterm.js, Playwright.
+Stack: Electron, React 19 + TypeScript (strict) + Vite (electron-vite), Tailwind v4 + shadcn-style components, SQLite (better-sqlite3) + Drizzle, Zod, Vitest. Claude Agent SDK is installed (Team Lead only). Planned and not installed: node-pty, xterm.js, Playwright.
 
 ## Status
 
-**Phase 1 is complete.** Implemented: secure Electron shell, typed IPC, SQLite + migrations, dashboard, project registration (pick directory, name it, persist, list, remove).
+**Phases 1 and 2 are implemented** (Phase 2 on branch `phase-2`). Implemented: secure Electron shell, typed IPC with sender check, SQLite + migrations, dashboard, project registration, archive/restore, project page, onboarding (read-only discovery + Team Lead summary), and a read-only Team Lead chat on the Claude Agent SDK with streaming, persisted history and session resume.
 
-Everything else (Team Leads, onboarding, tasks, agents, terminals, approvals, orchestration) is **not built**. Phase 2 (project workspace, onboarding, Team Lead chat) is next but **must not start without explicit user authorization**. Do not implement future phases, add their dependencies or tables, or describe them as existing. Details: @docs/ROADMAP.md
+Not built: tasks and Team Lead task tools, developer agents, terminals, approvals, orchestration. Phase 3 (tasks and orchestration) is next but **must not start without explicit user authorization**. Do not implement future phases, add their dependencies or tables, or describe them as existing. Details: @docs/ROADMAP.md
 
 ## Commands
 
@@ -24,7 +24,7 @@ There is no linter or formatter. Before saying work is done, run `pnpm typecheck
 
 ## Layout
 
-- `src/main/`: backend. `app/` (window), `ipc/` (`handle.ts` wrapper + thin handlers), `modules/projects/` (repository + service), `modules/git/` (read-only inspect), `database/` (schema, client)
+- `src/main/`: backend. `app/` (window), `ipc/` (`handle.ts` wrapper + thin handlers), `modules/projects/` (repository, service, discovery, onboarding), `modules/agents/team-lead/` (read-only SDK session), `modules/git/` (read-only inspect), `database/` (schema, client)
 - `src/preload/index.ts`: the only bridge, exposes `window.orbyte`
 - `src/renderer/`: React UI (`pages/`, `features/`, `components/ui/`, `hooks/`, `layouts/`, `lib/`)
 - `src/shared/`: Zod schemas, types, IPC channel map (the contract; imports nothing from other layers)
@@ -61,5 +61,9 @@ Read-only agents in `.claude/agents/` (Read, Grep, Glob only): `architecture-rev
 - TypeScript 7: no `baseUrl`; aliases (`@shared/*`, `@/*`) are relative `paths`, mirrored in the Vite and Vitest configs.
 - Main is CommonJS and the sandboxed preload is one CJS file (`out/preload/index.cjs`). Do not add `"type": "module"`.
 - The renderer never passes filesystem paths. Directories are picked in main and registered by single-use token.
-- Known unfixed gaps (see `docs/SECURITY.md`): no IPC sender check, `style-src 'unsafe-inline'` in prod CSP, git hardening before new git commands, project removal cascades the audit trail, `updated_at` not maintained.
+- The Agent SDK is ESM-only; main is CommonJS, so load it only via `sdk-loader.ts` (dynamic `import()`), kept external.
+- Team Lead options (`modules/agents/team-lead/options.ts`) are the read-only enforcement: never add tools, `allowedTools`, bypass modes, or drop `strictMcpConfig`/`mcp__*` (your personal MCP tools leak in otherwise). Tests assert this.
+- Team Lead auth uses the user's existing Claude Code login (user's choice; see `docs/SECURITY.md` policy caveat). It loads user + project + local settings, so a registered repo's hooks run. It can read `.env` files in the project.
+- End-to-end check recipe: `docs/DEVELOPMENT.md`.
+- Known gaps (see `docs/SECURITY.md`): `style-src 'unsafe-inline'` in prod CSP, `repoPath` revalidation before developer agents, heuristic auth-error detection, no packaging config.
 - CSP is injected at build time from `electron.vite.config.ts` (strict in prod, looser in dev). Navigation/permission guards live in `src/main/app/security.ts`.

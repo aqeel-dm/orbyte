@@ -33,8 +33,14 @@ export class ProjectService {
     this.now = deps.now ?? Date.now
   }
 
-  list(): Project[] {
-    return this.deps.repo.list()
+  list(includeArchived = false): Project[] {
+    return this.deps.repo.list(includeArchived)
+  }
+
+  get(id: string): Project {
+    const project = this.deps.repo.get(id)
+    if (!project) throw new AppError('NOT_FOUND', 'Project not found.')
+    return project
   }
 
   /** Allows only one directory-selection flow at a time (prevents dialog spam). */
@@ -72,8 +78,14 @@ export class ProjectService {
     }
     // Re-validate: the directory may have changed since it was picked.
     const path = await this.validateDirectory(entry.path)
-    if (this.deps.repo.findByPath(path)) {
-      throw new AppError('ALREADY_REGISTERED', 'This directory is already registered as a project.')
+    const existing = this.deps.repo.findByPath(path)
+    if (existing) {
+      throw new AppError(
+        'ALREADY_REGISTERED',
+        existing.status === 'archived'
+          ? 'This directory belongs to an archived project. Restore it instead.'
+          : 'This directory is already registered as a project.'
+      )
     }
     const inspection = await this.deps.inspect(path)
     return this.deps.repo.create({
@@ -85,8 +97,18 @@ export class ProjectService {
     })
   }
 
-  remove(id: string): void {
-    if (!this.deps.repo.remove(id)) throw new AppError('NOT_FOUND', 'Project not found.')
+  archive(id: string): Project {
+    return this.setStatus(id, 'archived')
+  }
+
+  restore(id: string): Project {
+    return this.setStatus(id, 'active')
+  }
+
+  private setStatus(id: string, status: 'active' | 'archived'): Project {
+    const project = this.deps.repo.setStatus(id, status)
+    if (!project) throw new AppError('NOT_FOUND', 'Project not found.')
+    return project
   }
 
   private async validateDirectory(p: string): Promise<string> {

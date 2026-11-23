@@ -27,3 +27,12 @@ export function isAppUrl(raw: string, appEntryUrl: string): boolean {
   if (app.protocol === 'file:') return u.protocol === 'file:' && u.pathname === app.pathname
   return u.origin === app.origin
 }
+
+/** Only the top-level frame of the app's own page may call IPC. Fails closed when the entry is unknown. */
+export function isTrustedFrame(
+  frame: { url: string; parent: unknown } | null | undefined,
+  appEntryUrl: string | null
+): boolean {
+  if (!appEntryUrl || !frame || frame.parent !== null) return false
+  return isAppUrl(frame.url, appEntryUrl)
+}

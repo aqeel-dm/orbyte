@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { onboardingDataSchema } from './onboarding'
 
 export const projectStatusSchema = z.enum(['active', 'archived'])
 export const onboardingStatusSchema = z.enum(['pending', 'in_progress', 'ready', 'failed'])
@@ -19,6 +20,7 @@ export const projectSchema = z.object({
   status: projectStatusSchema,
   onboardingStatus: onboardingStatusSchema,
   teamLeadSessionId: z.string().nullable(),
+  onboardingData: onboardingDataSchema.nullable(),
   createdAt: z.number(),
   updatedAt: z.number()
 })
@@ -40,8 +42,10 @@ export const registerProjectInputSchema = z.object({
   description: z.string().trim().max(1000).default('')
 })
 
-export const removeProjectInputSchema = z.object({ id: z.string().min(1).max(64) })
+export const projectIdSchema = z.object({ id: z.string().min(1).max(64) })
+export const listProjectsInputSchema = z.object({ includeArchived: z.boolean().optional() }).optional()
 
+export type ListProjectsInput = z.infer<typeof listProjectsInputSchema>
 export type Project = z.infer<typeof projectSchema>
 export type RepoInspection = z.infer<typeof repoInspectionSchema>
 export type PickDirectoryResult = z.infer<typeof pickDirectoryResultSchema>

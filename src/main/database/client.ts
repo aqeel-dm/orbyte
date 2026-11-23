@@ -8,6 +8,8 @@ import * as schema from './schema'
 export type Db = BetterSQLite3Database<typeof schema>
 export interface DbHandle {
   db: Db
+  /** Raw better-sqlite3 handle (tests and diagnostics only). */
+  raw: Database.Database
   close(): void
 }
 
@@ -19,5 +21,5 @@ export function openDatabase(file: string, migrationsFolder: string): DbHandle {
   sqlite.pragma('foreign_keys = ON')
   const db = drizzle(sqlite, { schema })
   migrate(db, { migrationsFolder })
-  return { db, close: () => sqlite.close() }
+  return { db, raw: sqlite, close: () => sqlite.close() }
 }

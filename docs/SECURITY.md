@@ -5,31 +5,40 @@ Last reviewed: Phase 1 security review (read-only agent review plus grep sweep).
 
 ## Code-enforced today (Implemented)
 - `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, `webSecurity: true`, `webviewTag: false` (`src/main/app/window.ts`). `require`, `process` and `window.electron` being undefined in the renderer was checked **manually** over the DevTools protocol (built and dev modes); no automated test covers it.
-- Narrow preload: only `window.orbyte.projects.{list,pickDirectory,register,remove}`; no `ipcRenderer`.
-- All handlers go through `handle()`: Zod validation, errors mapped to `Result`. Unexpected errors reach the renderer only as a generic `INTERNAL` message; full errors are logged in main (`console.error`).
-- No renderer-supplied paths: directories are picked in main and registered by single-use token (10-minute TTL, in memory, at most 20 pending, oldest evicted). Only one directory selection can be in progress (`DIALOG_BUSY`). Path is re-validated at registration (`realpath` + `isDirectory`).
-- `token` and `id` inputs are limited to 64 characters.
-- App-wide guards on **every** web contents (`src/main/app/security.ts`, registered before any window): `will-navigate`, `will-redirect` and `will-frame-navigate` are prevented unless the URL is the app's own entry; `will-attach-webview` is prevented; `window.open` is denied; only well-formed `https:` URLs without credentials open externally. Rules are in `app/navigation-policy.ts` (unit-tested).
-- Permissions: deny-all request and check handlers on the default session.
-- Git runs through `execFile` with an argument array, no shell, 10-second timeout. The commands used (`rev-parse`, `symbolic-ref`) are read-only. This does not guarantee git itself runs nothing: repository config can make git execute programs (see gaps).
-- CSP is injected into `index.html` at build time (`electron.vite.config.ts`). Production: `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'`. The dev server gets a looser CSP (inline scripts, localhost websockets) that is not present in built output.
-- Single-instance lock.
-- SQL goes through Drizzle (parameterized); `foreign_keys = ON`; `repo_path` has a unique index.
+- Narrow preload: only `window.orbyte.{projects,onboarding,teamLead,onEvent}` with fixed methods; no `ipcRenderer`. Incoming push events are re-validated with Zod in the preload and malformed ones are dropped.
+- All handlers go through `handle()`: **IPC sender check** (only the top-level frame of the app's own page; fails closed until the app entry is set; `isTrustedFrame` is unit-tested as a pure function), Zod validation, errors mapped to `Result`. Unexpected errors reach the renderer only as a generic `INTERNAL` message; full errors are logged in main.
+- No renderer-supplied paths: directories are picked in main and registered by single-use token (10-minute TTL, in memory, at most 20 pending, oldest evicted). Only one directory selection at a time (`DIALOG_BUSY`). Path is re-validated at registration (`realpath` + `isDirectory`).
+- Input limits: `token`/`id`/`projectId` at most 64 characters; chat messages 1-20,000 characters.
+- App-wide guards on **every** web contents (`src/main/app/security.ts`, registered before any window): navigation, redirect and frame navigation are prevented unless the URL is the app's own entry; webviews are prevented; `window.open` is denied; only well-formed `https:` URLs without credentials open externally. Rules are in `app/navigation-policy.ts` (unit-tested). Deny-all permission handlers on the default session.
+- Git runs through `execFile` with an argument array, no shell, 10-second timeout, `-c core.fsmonitor=false`, `GIT_OPTIONAL_LOCKS=0`, `GIT_TERMINAL_PROMPT=0`. Commands used (`rev-parse`, `symbolic-ref`) are read-only.
+- CSP is injected at build time (`electron.vite.config.ts`). Production: `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'`. The dev server gets a looser CSP that is not in built output.
+- Single-instance lock. SQL goes through Drizzle (parameterized); `foreign_keys = ON`; `repo_path` is unique.
+- **Team Lead is read-only by construction** (`src/main/modules/agents/team-lead/options.ts`, asserted by tests): `tools: [Read, Glob, Grep]`, `disallowedTools` includes `Edit, Write, NotebookEdit, Bash, mcp__*`, `strictMcpConfig: true`, `permissionMode: 'dontAsk'`, no `allowedTools`. Verified against the real SDK: the init message listed exactly `Glob, Grep, Read`, and an edit request was refused with no file created. This is SDK-enforced tool removal, not a prompt rule.
+- Discovery (`modules/projects/discovery.ts`) is read-only and bounded (depth 3, 400 dirs, 25 CLAUDE.md files); it never follows symlinks out of the repo and never writes. Onboarding output is stored in Orbyte's database only, never in the repository.
+- Team Lead and chat output is rendered as plain text (no HTML or markdown rendering), because it is untrusted.
+
+## Team Lead trust model (read this before registering a repository)
+- **Project and local settings are loaded** (your choice: user + project + local). A registered repository's `.claude` hooks and settings therefore run under the Team Lead exactly as they would if you ran `claude` there. Only register repositories you trust. Discovery reports whether hooks are configured.
+- **User-level settings, skills and plugins also load** (about 30 skills in testing), so behavior can differ per machine. Tools stay read-only regardless.
+- **Without `strictMcpConfig` your personal MCP tools (including write-capable ones) were available to the Team Lead** in testing, even with `tools` restricted. `strictMcpConfig` plus `mcp__*` in `disallowedTools` removes them. Do not drop either.
+- **Authentication uses your existing Claude Code login** (`apiKeySource: none` in testing). The SDK docs say third-party apps should use an API key (or Bedrock/Vertex) and that Anthropic does not allow third parties to offer claude.ai login without approval. This app is personal and local, and the choice is yours; revisit before distributing it. Setting `ANTHROPIC_API_KEY` in the environment is the documented alternative and needs no code change.
+- The Team Lead can **read any file inside the project directory, including secrets such as `.env`**, and file contents are sent to Anthropic as part of the conversation. There is no path filter. Do not register directories containing secrets you would not share.
+- Prompt injection from repository content is possible; impact is limited because there are no write or execute tools. Treat its output as untrusted.
 
 ## Known gaps (Limitation)
-1. **No IPC sender/origin check** in `handle()`. Acceptable only while the app loads nothing but its own bundle in one window.
-2. **`style-src 'unsafe-inline'`** remains in the production CSP (inline style attributes from UI components). Tighten if possible.
-3. **Input quality:** `name` and `description` are stored unsanitized: safe in React, but untrusted if ever placed into prompts (Phase 2+).
-4. **Git hardening:** `git` is resolved from `PATH` with the inherited environment, and repository-controlled config (for example `core.fsmonitor`) can cause git to run programs. Not demonstrated for the commands currently used (a scratch-repo test did not trigger it), but unproven for `status`/`diff`. Harden (`-c core.fsmonitor=false`, `GIT_OPTIONAL_LOCKS=0`, `GIT_TERMINAL_PROMPT=0`, no hooks) before adding any new git command.
-5. **`repoPath` is validated only at registration.** Re-validate on every privileged use once agents run (symlink swap).
-6. **Project removal** has no ownership concept and cascade-deletes `activity_events` (audit trail lost).
-7. **Electron Fuses** are not configured (unverified; no build/packaging config exists yet).
-8. No per-project ownership checks exist because no per-project resource exists yet. They are required once tasks, agents and terminals are added.
-9. No secrets exist yet. Credentials (Agent SDK/API keys, integrations) must stay in main when introduced.
-10. Not covered by automated tests: window/webPreferences options, `installAppSecurity` wiring, the CSP output, the IPC wrapper. Navigation, `window.open`, permission denial and CSP were verified manually over the DevTools protocol. The native folder dialog and UI were not exercised end-to-end.
+1. `style-src 'unsafe-inline'` remains in the production CSP (inline style attributes from UI components).
+2. `name` and `description` are stored unsanitized: safe in React, but untrusted if ever placed into prompts.
+3. `git` is resolved from `PATH` with the inherited environment.
+4. `repoPath` is validated only at registration. Re-validate on every privileged use once developer agents run (symlink swap). The Team Lead reads `repoPath` at each turn without re-validating it.
+5. Auth failure detection is heuristic: it matches error text (`AUTH_REQUIRED`), because the SDK documents no error codes. Real not-signed-in behavior has not been exercised.
+6. Resume of a missing session is handled by matching the SDK's current error text ("No conversation found with session ID"), observed in testing but undocumented; it could change.
+7. Electron Fuses are not configured; no packaging config exists (the SDK's native `claude` binary will need `asarUnpack` handling in Phase 7).
+8. No per-project ownership checks beyond id lookup exist because no per-project resource other than the project itself exists yet; they are required for tasks, agents and terminals.
+9. Not covered by automated tests: window/webPreferences options, `installAppSecurity` wiring, the CSP output, a real untrusted-frame IPC call (the check is tested as a pure function, and subframes do not receive the preload API anyway), and the real SDK (tests use a fake runner; the real SDK was exercised manually end to end). The native folder dialog and visual UI polish were not verified.
+10. The `projects` row delete path no longer exists in code (archive replaces it), but the database still cascades `chat_messages` and `activity_events` if a project row is ever deleted directly.
 
-## Fixed after the Phase 1 review
-`openExternal` URL parsing, origin-based navigation guards with redirect/frame/webview coverage, global `web-contents-created` guard, deny-all permissions, strict production CSP, pending-token cap, single-dialog lock, id/token length limits, restoring a minimized window on `second-instance`.
+## Fixed in this phase
+IPC sender validation, archive instead of delete (history kept), `updated_at` maintenance, git hardening for existing commands.
 
 ## Required for later phases (Planned; not built, not enforced)
 - Approval gate: the orchestrator verifies a stored approval record (task, agent, plan version, reviewer, timestamp) before any execution; changed plans invalidate it. Must be backend logic, not prompt wording.
