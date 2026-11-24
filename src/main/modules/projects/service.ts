@@ -19,6 +19,8 @@ export interface ProjectServiceDeps {
   repo: ProjectRepository
   inspect: (dir: string) => Promise<RepoInspection>
   discover?: (dir: string) => Promise<DiscoveryResult>
+  /** Called after a project is archived, so work running for it can be stopped. */
+  onArchive?: (projectId: string) => void
   now?: () => number
 }
 
@@ -112,7 +114,13 @@ export class ProjectService {
   }
 
   archive(id: string): Project {
-    return this.setStatus(id, 'archived')
+    const project = this.setStatus(id, 'archived')
+    try {
+      this.deps.onArchive?.(id)
+    } catch (err) {
+      console.error('[projects] onArchive failed', err)
+    }
+    return project
   }
 
   restore(id: string): Project {

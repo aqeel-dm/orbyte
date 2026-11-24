@@ -27,7 +27,8 @@ export const appEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('turn_error'), projectId: z.string(), turnId: z.string(), code: z.string(), message: z.string() }),
   z.object({ type: z.literal('project_updated'), projectId: z.string() }),
   z.object({ type: z.literal('tasks_changed'), projectId: z.string() }),
-  z.object({ type: z.literal('proposals_changed'), projectId: z.string() })
+  z.object({ type: z.literal('proposals_changed'), projectId: z.string() }),
+  z.object({ type: z.literal('agent_changed'), projectId: z.string(), agentId: z.string() })
 ])
 
 export type ChatMessage = z.infer<typeof chatMessageSchema>

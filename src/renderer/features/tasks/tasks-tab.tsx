@@ -10,12 +10,19 @@ import { PRIORITY_LABEL, STATUS_LABEL, STATUS_ORDER, moveLabel } from './labels'
 import { ProposalCard } from './proposal-card'
 import { TaskDialog } from './task-dialog'
 
-export function TasksTab({ projectId, archived }: { projectId: string; archived: boolean }) {
+export function TasksTab({ projectId, archived, onAgentStarted }: { projectId: string; archived: boolean; onAgentStarted: (agentId: string) => void }) {
   const { tasks, pending, loading, error, refresh } = useTasks(projectId)
   const [dialog, setDialog] = useState<{ task?: Task } | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [showClosed, setShowClosed] = useState(false)
   const titleOf = (id: string) => tasks.find((t) => t.id === id)?.title ?? 'a removed task'
+
+  async function startAgent(task: Task) {
+    setActionError(null)
+    const res = await window.orbyte.agents.start(projectId, task.id)
+    if (!res.ok) return setActionError(res.error.message)
+    onAgentStarted(res.data.id)
+  }
 
   async function move(task: Task, to: TaskStatus) {
     setActionError(null)
@@ -58,6 +65,7 @@ export function TasksTab({ projectId, archived }: { projectId: string; archived:
                     </div>
                     <div className="flex shrink-0 flex-wrap justify-end gap-1">
                       {!archived && (isOpen(t.status) || CONTENT_EDITABLE.includes(t.status)) && <Button size="sm" variant="ghost" onClick={() => setDialog({ task: t })}>Edit</Button>}
+                      {!archived && t.status === 'ready' && <Button size="sm" onClick={() => startAgent(t)}>Start agent</Button>}
                       {!archived && userTransitionsFrom(t.status).map((to) => <Button key={to} size="sm" variant="outline" onClick={() => move(t, to)}>{moveLabel(t.status, to)}</Button>)}
                     </div>
                   </div>

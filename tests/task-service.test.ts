@@ -100,6 +100,20 @@ describe('TaskService', () => {
     expect(code(() => t.tasks.create({ projectId: q.id, title: 'D' }))).toBe('PROJECT_ARCHIVED')
   })
 
+  it('orchestrator bookkeeping still works on an archived project, user moves do not', () => {
+    const t = makeTaskStack()
+    const p = t.addProject()
+    const task = t.tasks.create({ projectId: p.id, title: 'A' })
+    t.tasks.transition(p.id, task.id, 'ready', 'user')
+    t.tasks.transition(p.id, task.id, 'planning', 'orchestrator')
+    t.projects.setStatus(p.id, 'archived')
+    expect(code(() => t.tasks.transition(p.id, task.id, 'ready', 'orchestrator'))).toBe('PROJECT_ARCHIVED')
+    expect(t.tasks.transitionSystem(p.id, task.id, 'ready').status).toBe('ready') // not left stuck in planning
+    expect(code(() => t.tasks.transitionSystem('missing', task.id, 'ready'))).toBe('NOT_FOUND')
+    // the state machine still applies: bookkeeping cannot start work
+    expect(code(() => t.tasks.transitionSystem(p.id, task.id, 'in_progress'))).toBe('INVALID_TRANSITION')
+  })
+
   it('digest gives the Team Lead a compact read-only view', () => {
     const t = makeTaskStack()
     const p = t.addProject()

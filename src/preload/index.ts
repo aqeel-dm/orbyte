@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/constants/ipc'
+import { terminalEventSchema } from '../shared/schemas/agent'
 import { appEventSchema } from '../shared/schemas/team-lead'
 import type { OrbyteApi } from '../shared/types/api'
 
@@ -37,6 +38,25 @@ const api: OrbyteApi = {
   },
   activity: {
     list: (projectId, limit) => ipcRenderer.invoke(IPC.activity.list, { projectId, limit })
+  },
+  agents: {
+    list: (projectId) => ipcRenderer.invoke(IPC.agents.list, { projectId }),
+    start: (projectId, taskId) => ipcRenderer.invoke(IPC.agents.start, { projectId, taskId }),
+    stop: (projectId, agentId) => ipcRenderer.invoke(IPC.agents.stop, { projectId, agentId }),
+    discard: (projectId, agentId, force) => ipcRenderer.invoke(IPC.agents.discard, { projectId, agentId, force }),
+    attach: (projectId, agentId) => ipcRenderer.invoke(IPC.agents.attach, { projectId, agentId }),
+    detach: (projectId, agentId) => ipcRenderer.invoke(IPC.agents.detach, { projectId, agentId }),
+    write: (projectId, agentId, data) => ipcRenderer.invoke(IPC.agents.write, { projectId, agentId, data }),
+    resize: (projectId, agentId, cols, rows) => ipcRenderer.invoke(IPC.agents.resize, { projectId, agentId, cols, rows }),
+    summary: () => ipcRenderer.invoke(IPC.agents.summary)
+  },
+  onTerminalData: (listener) => {
+    const handler = (_e: unknown, payload: unknown): void => {
+      const parsed = terminalEventSchema.safeParse(payload)
+      if (parsed.success) listener(parsed.data) // drop anything malformed
+    }
+    ipcRenderer.on(IPC.events.terminal, handler)
+    return () => ipcRenderer.removeListener(IPC.events.terminal, handler)
   },
   onEvent: (listener) => {
     const handler = (_e: unknown, payload: unknown): void => {

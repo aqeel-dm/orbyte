@@ -1,5 +1,6 @@
+import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { app, BrowserWindow, dialog } from 'electron'
+import { app, BrowserWindow, dialog, webContents } from 'electron'
 import { openDatabase, type DbHandle } from './database/client'
 import { inspectRepository } from './modules/git/inspect'
 import { ChatRepository } from './modules/agents/team-lead/chat-repository'
@@ -9,6 +10,14 @@ import { discoverProject } from './modules/projects/discovery'
 import { OnboardingService } from './modules/projects/onboarding'
 import { ProjectRepository } from './modules/projects/repository'
 import { ProjectService } from './modules/projects/service'
+import { AgentRepository } from './modules/agents/developers/agent-repository'
+import { AgentService } from './modules/agents/developers/agent-service'
+import { resolveClaudeBinary } from './modules/agents/developers/claude-binary'
+import { createProcessReaper } from './modules/agents/developers/process-reaper'
+import { createNodePtyFactory } from './modules/agents/developers/pty-node'
+import { TerminalHub } from './modules/agents/developers/terminal-hub'
+import { GitWorktrees } from './modules/agents/developers/worktrees'
+import { registerAgentHandlers } from './ipc/agents'
 import { setTrustedAppEntry } from './ipc/handle'
 import { registerProjectHandlers } from './ipc/projects'
 import { registerTaskHandlers } from './ipc/tasks'
@@ -24,6 +33,7 @@ import type { AppEvent } from '@shared/schemas/team-lead'
 
 let dbHandle: DbHandle | undefined
 let teamLeadService: TeamLeadService | undefined
+let agentService: AgentService | undefined
 let quitting = false
 
 process.on('unhandledRejection', (reason) => console.error('[main] unhandled rejection', reason))
@@ -41,7 +51,8 @@ async function bootstrap(): Promise<void> {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IPC.events.app, event)
   }
   const taskRepo = new TaskRepository(dbHandle.db)
-  const taskService = new TaskService({ projects: projectRepo, tasks: taskRepo, emit })
+  // Stopping an agent when the user cancels or blocks its task: the service is created just below.
+  const taskService = new TaskService({ projects: projectRepo, tasks: taskRepo, emit, onLeaveActive: (taskId) => agentService?.onTaskLeft(taskId) })
   const proposalService = new ProposalService({
     db: dbHandle.db,
     projects: projectRepo,
@@ -63,7 +74,34 @@ async function bootstrap(): Promise<void> {
   const onboarding = new OnboardingService({ projects: projectRepo, teamLead, discover: discoverProject, emit })
   onboarding.recoverInterrupted()
 
-  const projectService = new ProjectService({ repo: projectRepo, inspect: inspectRepository, discover: discoverProject })
+  const projectService = new ProjectService({
+    repo: projectRepo,
+    inspect: inspectRepository,
+    discover: discoverProject,
+    // An archived project must have no live work: stop its agents.
+    onArchive: (projectId) => agentService?.stopAllForProject(projectId)
+  })
+  // Terminal output goes only to windows that attached to that agent.
+  const hub = new TerminalHub((windowId, event) => webContents.fromId(windowId)?.send(IPC.events.terminal, event))
+  app.on('web-contents-created', (_e, contents) => contents.once('destroyed', () => hub.detachAll(contents.id)))
+  const agents = (agentService = new AgentService({
+    projects: projectRepo,
+    taskRepo,
+    tasks: taskService,
+    agents: new AgentRepository(dbHandle.db),
+    worktrees: new GitWorktrees(),
+    pty: createNodePtyFactory(),
+    hub,
+    resolveClaude: () => resolveClaudeBinary({ env: process.env, home: homedir() }),
+    reaper: createProcessReaper(),
+    env: () => process.env,
+    worktreeRoot: join(app.getPath('userData'), 'worktrees'),
+    logDir: join(app.getPath('userData'), 'terminal-logs'),
+    emit
+  }))
+  await agents.recoverInterrupted()
+
+  registerAgentHandlers({ agents })
   registerTaskHandlers({ tasks: taskService, proposals: proposalService, activity: new ActivityRepository(dbHandle.db), projects: projectService })
   registerProjectHandlers({
     projects: projectService,
@@ -100,7 +138,8 @@ else {
     if (quitting) return
     quitting = true
     event.preventDefault()
-    void (teamLeadService?.shutdown() ?? Promise.resolve())
+    // Stop Team Lead turns and developer agent processes before the database closes.
+    void Promise.allSettled([teamLeadService?.shutdown(), agentService?.shutdown()])
       .catch((err) => console.error('[main] shutdown failed', err))
       .finally(() => {
         dbHandle?.close()

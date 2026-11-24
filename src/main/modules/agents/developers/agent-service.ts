@@ -1,0 +1,464 @@
+import { randomUUID } from 'node:crypto'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { MAX_TERMINAL_WRITE_BYTES, type AttachResult, type DeveloperAgent } from '@shared/schemas/agent'
+import type { AppEvent } from '@shared/schemas/team-lead'
+import { AppError } from '@shared/types/result'
+import type { ProjectRepository } from '../../projects/repository'
+import type { TaskRepository } from '../../tasks/repository'
+import type { TaskService } from '../../tasks/service'
+import { AgentRepository, toPublicAgent, type AgentRecord } from './agent-repository'
+import { agentEnv, buildAgentLaunch } from './launch'
+import type { AgentProcessReaper } from './process-reaper'
+import { TerminalBuffer, lastTerminalTitle } from './terminal-buffer'
+import type { TerminalHub } from './terminal-hub'
+import { GitWorktrees, containment } from './worktrees'
+
+/** The slice of node-pty the service uses. A fake implements it in tests. */
+export interface PtyProcess {
+  pid: number
+  onData(cb: (data: string) => void): void
+  onExit(cb: (e: { exitCode: number; signal?: number }) => void): void
+  write(data: string): void
+  resize(cols: number, rows: number): void
+  kill(signal?: string): void
+}
+export interface PtyFactory {
+  spawn(file: string, args: string[], opts: { cwd: string; env: Record<string, string>; cols: number; rows: number }): PtyProcess
+}
+
+export interface AgentServiceDeps {
+  projects: Pick<ProjectRepository, 'get'>
+  taskRepo: Pick<TaskRepository, 'get'>
+  tasks: Pick<TaskService, 'transition' | 'transitionSystem'>
+  agents: AgentRepository
+  worktrees: GitWorktrees
+  pty: PtyFactory
+  hub: TerminalHub
+  resolveClaude: () => string | null
+  /** Ends processes left behind by a crash. Optional so tests can omit it. */
+  reaper?: AgentProcessReaper
+  env: () => NodeJS.ProcessEnv
+  worktreeRoot: string
+  logDir: string
+  emit: (event: AppEvent) => void
+  maxActive?: number
+  flushMs?: number
+  killGraceMs?: number
+}
+
+const DEFAULT_MAX_ACTIVE = 6
+const LOG_TAIL_CHARS = 1_000_000
+const ID = /^[0-9a-f-]{36}$/
+
+interface Live {
+  proc: PtyProcess
+  buffer: TerminalBuffer
+  pending: string
+  flushTimer: NodeJS.Timeout | null
+  killTimer: NodeJS.Timeout | null
+  title: string
+  lastActivityAt: number
+  stopRequested: boolean
+  interrupted: boolean
+  done: Promise<void>
+  resolveDone: () => void
+}
+
+const slug = (title: string): string =>
+  title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30).replace(/-+$/g, '') || 'task'
+
+/**
+ * Starts and supervises developer agents: real `claude` CLI processes in real PTYs, each in its
+ * own git worktree. Project ownership is checked on every call. The orchestrator (this service)
+ * drives the task's planning state, not the agent.
+ */
+export class AgentService {
+  private readonly live = new Map<string, Live>()
+  /** Tasks whose start is in flight, so two clicks cannot start two agents. */
+  private readonly starting = new Set<string>()
+  /** Set when the app is quitting: no new agent may start. */
+  private closing = false
+  /** Starts currently running, so shutdown can wait for them (the reservation set is released earlier). */
+  private inFlight = 0
+
+  constructor(private readonly deps: AgentServiceDeps) {}
+
+  list(projectId: string): DeveloperAgent[] {
+    this.requireProject(projectId)
+    return this.deps.agents.list(projectId).map(toPublicAgent)
+  }
+
+  summary(): { running: number } {
+    return { running: this.deps.agents.countActive() }
+  }
+
+  async start(projectId: string, taskId: string): Promise<DeveloperAgent> {
+    if (this.closing) throw new AppError('SHUTTING_DOWN', 'Orbyte is closing.')
+    const project = this.requireProject(projectId)
+    if (project.status === 'archived') throw new AppError('PROJECT_ARCHIVED', 'This project is archived. Restore it to continue.')
+    if (project.repoSettingsTrust === 'unset') {
+      throw new AppError('TRUST_REQUIRED', "Decide whether to use this repository's Claude settings (Overview tab) before starting an agent.")
+    }
+    if (!project.isGitRepo) throw new AppError('NOT_GIT_REPO', 'Developer agents need a Git repository for their isolated worktree. This project is not one.')
+
+    const task = this.deps.taskRepo.get(taskId)
+    if (!task || task.projectId !== projectId) throw new AppError('NOT_FOUND', 'Task not found.')
+    if (task.status !== 'ready') throw new AppError('TASK_NOT_READY', 'Only a task in Ready can be started.')
+    for (const dep of task.dependsOnTaskIds) {
+      if (this.deps.taskRepo.get(dep)?.status !== 'completed') {
+        throw new AppError('DEPENDENCIES_INCOMPLETE', 'This task depends on tasks that are not completed yet.')
+      }
+    }
+    if (this.starting.has(taskId) || this.deps.agents.activeForTask(taskId)) {
+      throw new AppError('AGENT_ALREADY_RUNNING', 'An agent is already working on this task.')
+    }
+    if (this.deps.agents.countActive() + this.starting.size >= (this.deps.maxActive ?? DEFAULT_MAX_ACTIVE)) {
+      throw new AppError('TOO_MANY_AGENTS', 'Too many agents are running. Stop one first.')
+    }
+    const claude = this.deps.resolveClaude()
+    if (!claude) throw new AppError('CLAUDE_NOT_FOUND', 'The `claude` command was not found. Install Claude Code and make sure it is on your PATH.')
+
+    this.starting.add(taskId)
+    this.inFlight++
+    try {
+      return await this.startReserved(project, task, claude)
+    } finally {
+      this.starting.delete(taskId)
+      this.inFlight--
+    }
+  }
+
+  private async startReserved(
+    project: NonNullable<ReturnType<AgentServiceDeps['projects']['get']>>,
+    task: NonNullable<ReturnType<AgentServiceDeps['taskRepo']['get']>>,
+    claude: string
+  ): Promise<DeveloperAgent> {
+    const id = randomUUID()
+    const baseBranch = project.defaultBranch ?? 'HEAD'
+    const baseCommit = await this.deps.worktrees.resolveBase(project.repoPath, baseBranch)
+    const branch = `orbyte/${slug(task.title)}-${id.slice(0, 8)}`
+    const worktreePath = join(this.deps.worktreeRoot, project.id, id)
+    const sessionId = randomUUID()
+
+    const agent = this.deps.agents.create({
+      id, projectId: project.id, taskId: task.id, name: `Agent ${id.slice(0, 4)}`, claudeSessionId: sessionId,
+      worktreePath, branch, baseBranch, baseCommit
+    })
+
+    // From here the database row counts toward the limit, so the in-flight reservation is released.
+    this.starting.delete(task.id)
+
+    try {
+      await this.deps.worktrees.add(project.repoPath, worktreePath, branch, baseCommit)
+    } catch (err) {
+      // A failed `git worktree add` can leave a directory or branch behind: clean up what exists.
+      await this.cleanupFailedStart(agent)
+      throw err
+    }
+
+    // The app may have started quitting while git was working: do not spawn into a closing app.
+    if (this.closing) {
+      await this.cleanupFailedStart(agent)
+      throw new AppError('SHUTTING_DOWN', 'Orbyte is closing.')
+    }
+
+    // The orchestrator moves the task into planning; the agent does not.
+    try {
+      this.deps.tasks.transition(project.id, task.id, 'planning', 'orchestrator')
+    } catch (err) {
+      await this.cleanupFailedStart(agent)
+      throw err
+    }
+
+    let proc: PtyProcess
+    try {
+      proc = this.deps.pty.spawn(
+        claude,
+        buildAgentLaunch({
+          taskTitle: task.title, taskDescription: task.description, branch, baseBranch, sessionId,
+          repoSettingsTrust: project.repoSettingsTrust === 'trusted' ? 'trusted' : 'untrusted'
+        }),
+        { cwd: worktreePath, env: agentEnv(this.deps.env()), cols: 120, rows: 32 }
+      )
+    } catch (err) {
+      console.error('[agents] spawn failed', err)
+      this.returnTaskToReady(project.id, task.id)
+      await this.cleanupFailedStart(agent)
+      throw new AppError('SPAWN_FAILED', 'Could not start Claude Code. See the application log.')
+    }
+
+    let resolveDone!: () => void
+    const done = new Promise<void>((r) => (resolveDone = r))
+    const live: Live = {
+      proc, buffer: new TerminalBuffer(), pending: '', flushTimer: null, killTimer: null, title: '', lastActivityAt: 0,
+      stopRequested: false, interrupted: false, done, resolveDone
+    }
+    this.live.set(id, live)
+    proc.onData((d) => this.onData(agent, live, d))
+    proc.onExit((e) => void this.onExit(agent, live, e))
+
+    const running = this.deps.agents.markRunning(id, proc.pid)
+    this.changed(project.id, id)
+    return toPublicAgent(running ?? agent)
+  }
+
+  stop(projectId: string, agentId: string): DeveloperAgent {
+    const agent = this.requireAgent(projectId, agentId)
+    if (!this.live.has(agentId)) throw new AppError('NOT_RUNNING', 'This agent is not running.')
+    this.requestStop(agentId)
+    return toPublicAgent(agent)
+  }
+
+  /** Archiving a project stops everything running for it. */
+  stopAllForProject(projectId: string): void {
+    for (const agent of this.deps.agents.list(projectId)) {
+      if (this.live.has(agent.id)) this.requestStop(agent.id)
+    }
+  }
+
+  /** Called when the user moves a task out of active work (cancel, block, back to ready): its agent must stop. */
+  onTaskLeft(taskId: string): void {
+    const agent = this.deps.agents.activeForTask(taskId)
+    if (agent && this.live.has(agent.id)) this.requestStop(agent.id)
+  }
+
+  async discard(projectId: string, agentId: string, force = false): Promise<DeveloperAgent> {
+    const agent = this.requireAgent(projectId, agentId)
+    if (this.live.has(agentId) || agent.status === 'starting' || agent.status === 'running') {
+      throw new AppError('AGENT_RUNNING', 'Stop the agent before discarding it.')
+    }
+    if (agent.worktreeRemoved) return toPublicAgent(agent)
+    const project = this.requireProject(projectId)
+    // Follows symlinks, so a link swapped into the worktree directory cannot point us elsewhere.
+    const where = await containment(this.deps.worktreeRoot, agent.worktreePath)
+    if (where === 'outside') throw new AppError('WORKTREE_FAILED', 'The worktree is outside Orbyte\'s worktree directory.')
+    if (where === 'missing') {
+      // The directory is already gone (deleted by hand): forget it in git and finish the cleanup.
+      await this.deps.worktrees.prune(project.repoPath)
+    } else {
+      if (!force) {
+        if (await this.deps.worktrees.hasChanges(agent.worktreePath)) {
+          throw new AppError('WORKTREE_DIRTY', 'The worktree has uncommitted changes. Discard anyway to delete them.')
+        }
+        if (await this.deps.worktrees.hasStrayCommits(agent.worktreePath, agent.branch, agent.baseCommit)) {
+          throw new AppError('WORKTREE_DIRTY', 'The worktree has commits that are not on its branch (for example from a detached HEAD). Discard anyway to lose them.')
+        }
+      }
+      await this.deps.worktrees.remove(project.repoPath, agent.worktreePath, force)
+    }
+    await this.deps.worktrees.deleteBranchIfUnmoved(project.repoPath, agent.branch, agent.baseCommit)
+    const updated = this.deps.agents.markWorktreeRemoved(agentId)
+    this.changed(projectId, agentId)
+    return toPublicAgent(updated ?? agent)
+  }
+
+  /** Subscribes a window to this agent's terminal and returns recent output. */
+  async attach(windowId: number, projectId: string, agentId: string): Promise<AttachResult> {
+    const agent = this.requireAgent(projectId, agentId)
+    const live = this.live.get(agentId)
+    if (live) {
+      // Deliver anything already buffered to current viewers first, so it is not sent again to this
+      // window after it is already part of the history snapshot.
+      this.flush(agentId, live)
+      this.deps.hub.attach(agentId, windowId)
+      return { history: live.buffer.snapshot(), live: true }
+    }
+    return { history: await this.readLog(agent.id), live: false }
+  }
+
+  detach(windowId: number, projectId: string, agentId: string): void {
+    this.requireAgent(projectId, agentId)
+    this.deps.hub.detach(agentId, windowId)
+  }
+
+  /** The user typing into the agent's Claude Code session. */
+  write(projectId: string, agentId: string, data: string): void {
+    const live = this.requireLive(projectId, agentId)
+    if (Buffer.byteLength(data) > MAX_TERMINAL_WRITE_BYTES) throw new AppError('INVALID_INPUT', 'Too much input at once.')
+    live.proc.write(data)
+  }
+
+  resize(projectId: string, agentId: string, cols: number, rows: number): void {
+    this.requireLive(projectId, agentId).proc.resize(cols, rows)
+  }
+
+  /**
+   * On startup: agents still marked active were interrupted by an exit. If the app crashed (so the
+   * graceful shutdown never ran) their processes may still be running, so each recorded process is
+   * stopped first, but only if it is verifiably that agent's `claude` process.
+   */
+  async recoverInterrupted(): Promise<void> {
+    if (this.deps.reaper) {
+      for (const agent of this.deps.agents.listActive()) {
+        if (agent.pid === null) continue
+        try {
+          const result = await this.deps.reaper.reap(agent.pid, agent.claudeSessionId)
+          if (result === 'killed') console.warn(`[agents] stopped an orphaned agent process left by a previous run (${agent.name})`)
+        } catch (err) {
+          console.error('[agents] orphan check failed', err)
+        }
+      }
+    }
+    for (const agent of this.deps.agents.markInterruptedAll()) {
+      this.returnTaskToReady(agent.projectId, agent.taskId)
+      this.changed(agent.projectId, agent.id)
+    }
+  }
+
+  /** Stops every agent (called on quit) and waits briefly for the processes to exit. */
+  async shutdown(graceMs = this.deps.killGraceMs ?? 3000): Promise<void> {
+    this.closing = true // no new start from here on; a start in flight aborts before it spawns
+    const drainUntil = Date.now() + graceMs
+    while (this.inFlight > 0 && Date.now() < drainUntil) await new Promise((r) => setTimeout(r, 25))
+    const lives = [...this.live.entries()]
+    for (const [id, live] of lives) {
+      live.interrupted = true
+      this.requestStop(id, graceMs)
+    }
+    await Promise.race([Promise.allSettled(lives.map(([, l]) => l.done)), new Promise((r) => setTimeout(r, graceMs + 500))])
+  }
+
+  // ---------------------------------------------------------------- internals
+
+  private requestStop(agentId: string, graceMs = this.deps.killGraceMs ?? 3000): void {
+    const live = this.live.get(agentId)
+    if (!live) return
+    live.stopRequested = true
+    live.proc.kill('SIGTERM')
+    live.killTimer ??= setTimeout(() => {
+      try {
+        live.proc.kill('SIGKILL')
+      } catch (err) {
+        console.error('[agents] SIGKILL failed', err)
+      }
+    }, graceMs)
+  }
+
+  private onData(agent: AgentRecord, live: Live, data: string): void {
+    // This runs inside the PTY's data callback: an exception here would be an uncaught exception.
+    try {
+      live.buffer.append(data)
+      live.pending += data
+      live.flushTimer ??= setTimeout(() => this.flush(agent.id, live), this.deps.flushMs ?? 16)
+      const title = lastTerminalTitle(data)
+      if (title && title !== live.title) {
+        live.title = title
+        if (Date.now() - live.lastActivityAt > 1000) {
+          live.lastActivityAt = Date.now()
+          this.deps.agents.setActivity(agent.id, title)
+          this.changed(agent.projectId, agent.id)
+        }
+      }
+    } catch (err) {
+      console.error('[agents] output handling failed', err)
+    }
+  }
+
+  private flush(agentId: string, live: Live): void {
+    if (live.flushTimer) clearTimeout(live.flushTimer)
+    live.flushTimer = null
+    if (!live.pending) return
+    const chunk = live.pending
+    live.pending = ''
+    this.deps.hub.publish(agentId, chunk)
+  }
+
+  private async onExit(agent: AgentRecord, live: Live, e: { exitCode: number; signal?: number }): Promise<void> {
+    // Each step is isolated: a failure in one (for example a locked database) must not strand the rest.
+    const step = (label: string, fn: () => void): void => {
+      try {
+        fn()
+      } catch (err) {
+        console.error(`[agents] exit handling: ${label} failed`, err)
+      }
+    }
+    if (live.flushTimer) clearTimeout(live.flushTimer)
+    if (live.killTimer) clearTimeout(live.killTimer)
+    step('flush', () => this.flush(agent.id, live))
+    await this.saveLog(agent.id, live.buffer)
+    const status = live.interrupted ? 'interrupted' : live.stopRequested ? 'stopped' : e.exitCode === 0 ? 'exited' : 'failed'
+    step('record exit', () => void this.deps.agents.finish(agent.id, status, e.exitCode, live.title))
+    // No plan is captured yet (Phase 5), so the task goes back to Ready whenever its agent ends.
+    step('return task', () => this.returnTaskToReady(agent.projectId, agent.taskId))
+    step('announce', () => this.changed(agent.projectId, agent.id))
+    this.deps.hub.clear(agent.id)
+    this.live.delete(agent.id)
+    live.resolveDone()
+  }
+
+  /**
+   * Only a task still in planning goes back to Ready. If the user already moved it (cancelled or
+   * blocked it, say), that decision stands; the legal blocked-to-ready move must not undo it.
+   */
+  private returnTaskToReady(projectId: string, taskId: string): void {
+    if (this.deps.taskRepo.get(taskId)?.status !== 'planning') return
+    try {
+      this.deps.tasks.transitionSystem(projectId, taskId, 'ready')
+    } catch (err) {
+      if (!(err instanceof AppError)) console.error('[agents] could not return task to ready', err)
+    }
+  }
+
+  private async cleanupFailedStart(agent: AgentRecord): Promise<void> {
+    const project = this.deps.projects.get(agent.projectId)
+    try {
+      if (project) {
+        await this.deps.worktrees.remove(project.repoPath, agent.worktreePath, true)
+        await this.deps.worktrees.deleteBranchIfUnmoved(project.repoPath, agent.branch, agent.baseCommit)
+      }
+    } catch (err) {
+      console.error('[agents] cleanup after failed start failed', err)
+    }
+    this.deps.agents.finish(agent.id, 'failed', null, 'Failed to start')
+    this.deps.agents.markWorktreeRemoved(agent.id)
+    this.changed(agent.projectId, agent.id)
+  }
+
+  private async saveLog(agentId: string, buffer: TerminalBuffer): Promise<void> {
+    if (!ID.test(agentId)) return
+    try {
+      await mkdir(this.deps.logDir, { recursive: true, mode: 0o700 })
+      await writeFile(join(this.deps.logDir, `${agentId}.log`), buffer.tail(LOG_TAIL_CHARS), { mode: 0o600 })
+    } catch (err) {
+      console.error('[agents] could not save terminal log', err)
+    }
+  }
+
+  private async readLog(agentId: string): Promise<string> {
+    if (!ID.test(agentId)) return ''
+    try {
+      return await readFile(join(this.deps.logDir, `${agentId}.log`), 'utf8')
+    } catch {
+      return ''
+    }
+  }
+
+  private requireProject(projectId: string) {
+    const project = this.deps.projects.get(projectId)
+    if (!project) throw new AppError('NOT_FOUND', 'Project not found.')
+    return project
+  }
+
+  /** Same error for "missing" and "belongs to another project". */
+  private requireAgent(projectId: string, agentId: string): AgentRecord {
+    const agent = this.deps.agents.get(agentId)
+    if (!agent || agent.projectId !== projectId) throw new AppError('NOT_FOUND', 'Agent not found.')
+    return agent
+  }
+
+  private requireLive(projectId: string, agentId: string): Live {
+    const agent = this.requireAgent(projectId, agentId)
+    const live = this.live.get(agentId)
+    if (!live || agent.status !== 'running') throw new AppError('NOT_RUNNING', 'This agent is not running.')
+    return live
+  }
+
+  private changed(projectId: string, agentId: string): void {
+    try {
+      this.deps.emit({ type: 'agent_changed', projectId, agentId })
+    } catch (err) {
+      console.error('[agents] failed to emit event', err)
+    }
+  }
+}

@@ -15,6 +15,7 @@ export interface TaskDigest {
 }
 
 const DIGEST_LIMIT = 100
+const ACTIVE_WORK: TaskStatus[] = ['planning', 'awaiting_approval', 'in_progress', 'in_review']
 
 /**
  * The single place task state changes. Every method takes the project id and checks that the
@@ -26,6 +27,8 @@ export class TaskService {
       projects: Pick<ProjectRepository, 'get'>
       tasks: TaskRepository
       emit: (event: AppEvent) => void
+      /** Called when the user moves a task out of active work, so its agent can be stopped. */
+      onLeaveActive?: (taskId: string) => void
     }
   ) {}
 
@@ -87,12 +90,32 @@ export class TaskService {
    */
   transition(projectId: string, taskId: string, to: TaskStatus, actor: TransitionActor, ctx: TransitionContext = {}): Task {
     this.requireActiveProject(projectId)
+    return this.move(projectId, taskId, to, actor, ctx)
+  }
+
+  /**
+   * Orchestrator bookkeeping, for example returning a task after its agent ended. It must still work
+   * if the project was archived in the meantime, or the task would stay stuck in planning.
+   */
+  transitionSystem(projectId: string, taskId: string, to: TaskStatus, ctx: TransitionContext = {}): Task {
+    this.requireProject(projectId)
+    return this.move(projectId, taskId, to, 'orchestrator', ctx)
+  }
+
+  private move(projectId: string, taskId: string, to: TaskStatus, actor: TransitionActor, ctx: TransitionContext): Task {
     const task = this.requireTask(projectId, taskId)
     const check = checkTransition(task.status, to, actor, ctx)
     if (!check.ok) throw new AppError('INVALID_TRANSITION', check.reason)
     const moved = this.deps.tasks.setStatus(task.id, task.status, to, actor)
     if (!moved) throw new AppError('CONFLICT', 'The task changed while you were moving it. Reload and try again.')
     this.changed(projectId)
+    if (actor === 'user' && ACTIVE_WORK.includes(task.status)) {
+      try {
+        this.deps.onLeaveActive?.(task.id)
+      } catch (err) {
+        console.error('[tasks] onLeaveActive failed', err)
+      }
+    }
     return moved
   }
 

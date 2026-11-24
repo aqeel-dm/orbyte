@@ -23,6 +23,7 @@ Source is the reference; if this document disagrees with the code, fix the docum
 - `modules/projects/{repository,service}.ts`: data access and business rules (register, archive/restore, status). `discovery.ts`: read-only repo-instruction discovery. `onboarding.ts`: onboarding state machine.
 - `modules/tasks/`: `repository.ts`, `service.ts` (the single place task state changes; every call is checked against the project id), `dependencies.ts` (pure dependency and cycle rules). `src/shared/task-state.ts` is the pure state machine shared with the UI.
 - `modules/orchestration/`: `proposal-service.ts` and `proposal-repository.ts`, the authorization boundary between Team Lead suggestions and real tasks.
+- `modules/agents/developers/`: `agent-service.ts` (start, supervise, stop, discard, attach, recovery), `agent-repository.ts`, `worktrees.ts` (hardened git), `launch.ts` (CLI arguments and env allowlist), `claude-binary.ts`, `pty-node.ts` (the only place node-pty is loaded), `terminal-buffer.ts`, `terminal-hub.ts` (per-window attach), `process-reaper.ts`.
 - `modules/agents/team-lead/`: `options.ts` (read-only SDK options builder), `events.ts` (SDK message to internal signals), `runner.ts` (SDK-backed `TeamLeadRunner`, the test seam), `sdk-loader.ts` (dynamic `import()` of the ESM-only SDK), `service.ts` (turns, session persistence, resume fallback, interrupt), `chat-repository.ts`, `prompt.ts`, `tools.ts` (the in-process `orbyte` MCP server: `list_tasks`, `propose_tasks`).
 - `modules/git/inspect.ts`: read-only repo inspection through `execFile('git', ...)`.
 - `database/{schema,client}.ts`: Drizzle schema; opens SQLite and runs migrations.
@@ -51,6 +52,15 @@ Source is the reference; if this document disagrees with the code, fix the docum
 3. The user reviews the proposal in the Tasks tab, unticks tasks and edits the rest, then approves. `ProposalService.approve` re-validates everything (dependencies may have changed), creates the tasks in dependency order and marks the proposal approved in **one transaction**, so either all chosen tasks exist or none do. A proposal can be decided only once. Created tasks have `source: team_lead` and status `backlog`.
 4. Task status changes go through `TaskService.transition` and the state machine. The renderer always acts as `user`, so it can only make moves the table allows for users (for example backlog to ready, cancel, block, reopen). Planning, review and completion belong to the orchestrator actor, and entering `in_progress` additionally requires a verified approval that nothing can supply yet (Phase 5).
 
+## Data flow: developer agent (Implemented)
+1. The user marks a task Ready and chooses Start agent. `AgentService.start` checks: project active, repo-settings trust decided, git repo, task Ready and owned by the project, dependencies completed, no live agent for the task, under the agent limit, `claude` found. A task whose start is in flight is reserved so two clicks cannot start two agents.
+2. It resolves the default branch to a commit, records the agent (`starting`), creates the worktree and branch, then the **orchestrator** moves the task Ready to planning, then spawns `claude` in a PTY with the planning-stage arguments. A failure at any step rolls back the later steps (task back to Ready, worktree and unmoved branch removed, agent `failed`).
+3. PTY output is kept in a bounded buffer, batched (about 16 ms) and published through `TerminalHub` to windows that attached; the program's terminal title becomes the agent's current activity. xterm.js in the renderer writes the history from `attach` and then live output, and sends keystrokes with `agents:write`.
+4. On exit the buffer is saved, the agent becomes `exited`, `failed` (non-zero), `stopped` (user or task change) or `interrupted` (app quit), and the task returns to Ready only if it is still in planning.
+5. Archiving a project calls `AgentService.stopAllForProject`. On quit the service refuses new starts and waits for in-flight ones. On startup agents still recorded active are interrupted (after stopping any verified leftover process); on quit all agents are stopped before the database closes.
+
+**Decisions:** one agent per task, always in its own worktree; the real CLI in a real PTY (no emulation); the agent is launched for the planning stage only in Phase 4; Orbyte drives the task state, not the agent.
+
 ## Data flow: onboarding (Implemented)
 `onboarding.start` marks the project `in_progress` (audit event), then in the background: `discoverProject` (read-only), then one bounded Team Lead turn (max 12 turns, not saved to chat) that returns a summary and proposed workflow guidance. Results are stored in `projects.onboarding_data` and status becomes `ready` or `failed`; `project_updated` events refresh the UI. At startup, onboarding left `in_progress` is marked `failed` (`INTERRUPTED`) so it can be retried. Nothing is written to the repository.
 
@@ -61,7 +71,7 @@ Source is the reference; if this document disagrees with the code, fix the docum
 - **Limitation:** non-git directories can be registered; worktree isolation will not apply to them.
 
 ## Planned, not built
-Developer agents with node-pty and xterm (Phase 4), plan and approval gate (Phase 5), execution and review (Phase 6), recovery and packaging (Phase 7). See `ROADMAP.md`. Integrations (Jira, Linear, GitHub Issues) must sit behind an adapter interface so the task model stays provider-neutral.
+Plan capture and approval gate (Phase 5), execution and review (Phase 6), recovery and packaging (Phase 7). See `ROADMAP.md`. Integrations (Jira, Linear, GitHub Issues) must sit behind an adapter interface so the task model stays provider-neutral.
 
 ## Decisions
 - Electron main as backend, typed IPC, no HTTP server.

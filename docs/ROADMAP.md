@@ -6,8 +6,8 @@ Each phase must leave the app runnable. Do not start a phase without explicit au
 |---|---|---|---|
 | 1 | Foundation | **Complete** (commit `9d62d2e`) | Electron shell, secure preload and typed IPC, SQLite + Drizzle migrations, dashboard, project registration and persistence |
 | 2 | Project workspace, onboarding, Team Lead chat | **Complete** (merged into `main`) (verification caveats below) | Project page, onboarding lifecycle, discovery of CLAUDE.md and `.claude/`, Team Lead via Claude Agent SDK, session persistence and resume, streaming chat |
-| 3 | Tasks and orchestration | **Implemented** (uncommitted; caveats below) | Task model, backlog UI, dependencies, validated state machine, Team Lead task tools (propose, user approves), persistent event history |
-| 4 | Developer agent runtime | Not started | Claude Code CLI in node-pty, git worktrees, xterm.js terminals, agent persistence |
+| 3 | Tasks and orchestration | **Complete** (commit `7806cd5`; caveats below) | Task model, backlog UI, dependencies, validated state machine, Team Lead task tools (propose, user approves), persistent event history |
+| 4 | Developer agent runtime | **Implemented** (uncommitted; caveats below) | Claude Code CLI in node-pty, git worktrees, xterm.js terminals, agent persistence |
 | 5 | Planning and approval | Not started | Plan capture and versioning, Team Lead review, backend-enforced approval gate |
 | 6 | Execution and review | Not started | Approved execution, result and test capture, Team Lead review, completion rules |
 | 7 | Reliability and polish | Not started | Crash recovery, process cleanup, logging, tests, packaging |
@@ -25,5 +25,12 @@ Verified with 140 automated tests, a read-only security review (findings fixed o
 
 Not verified: the visual quality of the Tasks UI (checked that it renders the expected text, not how it looks); behavior with large backlogs (the Team Lead digest is capped at 100 tasks); the "orchestrator" actor paths beyond unit tests (no caller exists until Phase 4). Phase 3 has no separate orchestrator process: `TaskService` plus the state machine is the orchestrator for task state, and the execution workflow arrives in Phases 4-6.
 
-## Open items for Phase 4 and later
-Enforce dependency completion when starting an agent; make cancel stop a running agent; `repoPath` re-validation before developer agents; non-git projects must be refused for developer agents (Phase 4); packaging the SDK's native binary (Phase 7).
+## Phase 4 acceptance
+Verified with 211 automated tests (real git and database, fake PTY) and a real run in the built app (real `node-pty`, real `claude`, scratch repository): starting an agent for a Ready task created an isolated worktree and branch, moved the task to planning and started a real `claude` process with the planned flags (found with `ps`); the user's own working tree stayed clean; terminal output streamed to the renderer, resize and write validation worked, the agent's terminal title appeared as its activity, and the Agents tab rendered the agent with an xterm terminal; blocking the task stopped the agent and the block stood; the saved history replayed after exit; discard removed the worktree and the unmoved branch; after a hard kill of the app the agent was marked interrupted, its task was Ready again, and no process or branch was left behind. A read-only security review of this phase found no critical issues and one high (archiving did not stop agents), five medium (a shutdown race, discard silently losing detached-HEAD commits, uncaught errors in PTY callbacks, replayed terminal queries typed into the session, and a tool denylist that left ~55 tools) and several low items; all but the documented gaps in `SECURITY.md` were fixed and tested, and the new launch flags and the archive fix were re-verified against the real CLI and a live agent.
+
+Findings that shaped the design: deny rules hold even after cycling out of plan mode, but Claude Code's `!` shell mode still runs commands (the model is restricted, a person typing is not); Claude shows its own folder-trust prompt in new worktrees; `CLAUDE_*` environment markers can switch off transcript saving.
+
+Not verified: real keyboard typing in the xterm UI (input was tested through the IPC write path); how the Agents tab looks; macOS only; very large or long-running output; resuming an agent's session (the session id is recorded for Phase 5/6); plan capture and the approval gate (Phase 5).
+
+## Open items for Phase 5 and later
+Plan capture (a documented hook or the session transcript) and the real approval record behind `approvalVerified`; execution launch (`--resume` with the recorded session id and wider permissions); `repoPath` re-validation before each agent start; decide how to treat the `!` shell-mode gap; packaging the SDK and `node-pty` native binaries (Phase 7).

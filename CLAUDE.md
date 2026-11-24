@@ -2,13 +2,13 @@
 
 Local-first Electron desktop app that will coordinate multiple Claude Code developer agents across software projects. Single user, no remote infrastructure (no Docker, Redis, Postgres or HTTP backend).
 
-Stack: Electron, React 19 + TypeScript (strict) + Vite (electron-vite), Tailwind v4 + shadcn-style components, SQLite (better-sqlite3) + Drizzle, Zod, Vitest. Claude Agent SDK is installed (Team Lead only). Planned and not installed: node-pty, xterm.js, Playwright.
+Stack: Electron, React 19 + TypeScript (strict) + Vite (electron-vite), Tailwind v4 + shadcn-style components, SQLite (better-sqlite3) + Drizzle, Zod, Vitest. Claude Agent SDK is installed (Team Lead only). node-pty and xterm.js are installed (developer agents). Planned and not installed: Playwright.
 
 ## Status
 
-**Phases 1, 2 and 3 are implemented** (Phase 3 may be uncommitted: check `git status`). Implemented: secure Electron shell, typed IPC with sender check, SQLite + migrations, dashboard, project registration, archive/restore, project page, onboarding (read-only discovery + Team Lead summary), a read-only Team Lead chat on the Claude Agent SDK with streaming, persisted history and session resume, and a task backlog with dependencies, a validated state machine and Team Lead task proposals that only the user can approve.
+**Phases 1-4 are implemented** (Phase 4 may be uncommitted: check `git status`). Implemented: secure Electron shell, typed IPC with sender check, SQLite + migrations, dashboard, project registration, archive/restore, project page, onboarding (read-only discovery + Team Lead summary), a read-only Team Lead chat on the Claude Agent SDK with streaming, persisted history and session resume, a task backlog with dependencies, a validated state machine and Team Lead task proposals that only the user can approve, and developer agents (real `claude` CLI in a PTY, one git worktree per agent, xterm terminal, planning stage only).
 
-Not built: developer agents, terminals, plan and approval records, execution. Phase 4 (developer agent runtime) is next but **must not start without explicit user authorization**. Do not implement future phases, add their dependencies or tables, or describe them as existing. Details: @docs/ROADMAP.md
+Not built: plan capture, approval records, execution and review. Phase 5 (planning and approval) is next but **must not start without explicit user authorization**. Do not implement future phases, add their dependencies or tables, or describe them as existing. Details: @docs/ROADMAP.md
 
 ## Commands
 
@@ -24,7 +24,7 @@ There is no linter or formatter. Before saying work is done, run `pnpm typecheck
 
 ## Layout
 
-- `src/main/`: backend. `app/` (window), `ipc/` (`handle.ts` wrapper + thin handlers), `modules/projects/` (repository, service, discovery, onboarding), `modules/tasks/` (state, dependencies), `modules/orchestration/` (proposal approval), `modules/agents/team-lead/` (read-only SDK session + task tools), `modules/git/` (read-only inspect), `database/` (schema, client)
+- `src/main/`: backend. `app/` (window), `ipc/` (`handle.ts` wrapper + thin handlers), `modules/projects/` (repository, service, discovery, onboarding), `modules/tasks/` (state, dependencies), `modules/orchestration/` (proposal approval), `modules/agents/team-lead/` (read-only SDK session + task tools), `modules/agents/developers/` (agents, worktrees, PTY), `modules/git/` (read-only inspect), `database/` (schema, client)
 - `src/preload/index.ts`: the only bridge, exposes `window.orbyte`
 - `src/renderer/`: React UI (`pages/`, `features/`, `components/ui/`, `hooks/`, `layouts/`, `lib/`)
 - `src/shared/`: Zod schemas, types, IPC channel map (the contract; imports nothing from other layers)
@@ -65,6 +65,9 @@ Read-only agents in `.claude/agents/` (Read, Grep, Glob only): `architecture-rev
 - Team Lead options (`modules/agents/team-lead/options.ts`) are the read-only enforcement: never add built-in tools, bypass modes, or drop `strictMcpConfig` (your personal MCP tools leak in otherwise). `allowedTools` may contain only Orbyte's own two tools, and only for chat turns. Tests assert this.
 - The Team Lead can only PROPOSE tasks (`propose_tasks`); only `ProposalService.approve` (user action) creates them. Never add a path from the Team Lead to `TaskService.create`/`TaskRepository.create`. Task moves go through `src/shared/task-state.ts`; nothing may enter `in_progress` without `approvalVerified`.
 - Team Lead auth uses the user's existing Claude Code login (user's choice; see `docs/SECURITY.md` policy caveat). Repo settings (hooks) load only after the user marks the project `trusted` (`repoSettingsTrust`); `unset` blocks the Team Lead in main. It can read `.env` files in the project.
-- End-to-end check recipe: `docs/DEVELOPMENT.md`.
+- Developer agents: spawn the real `claude` directly via `launch.ts` (no shell); the planning launch must keep `--tools=Read,Glob,Grep` and `--strict-mcp-config` (without them the agent had ~55 tools); never add bypass/accept-edits flags; keep the env allowlist tight (no `CLAUDE_` prefix); all git for worktrees goes through `GitWorktrees` (hooks off). node-pty is a native module: `pnpm rebuild` after install.
+- Terminal input is the user typing into Claude Code, which has a `!` shell mode that works even with `Bash` denied (tested): anything able to call `agents:write` can run shell commands as the user. See `docs/SECURITY.md`; do not claim planning agents are fully write-proof.
+- When testing crashes, kill the Electron main process, not the `pnpm`/Node wrapper.
+- End-to-end check recipes: `docs/DEVELOPMENT.md`.
 - Known gaps (see `docs/SECURITY.md`): `style-src 'unsafe-inline'` in prod CSP, `repoPath` revalidation before developer agents, heuristic auth-error detection, no packaging config. Never send raw SDK/runtime error text to the renderer (map to fixed messages; log in main).
 - CSP is injected at build time from `electron.vite.config.ts` (strict in prod, looser in dev). Navigation/permission guards live in `src/main/app/security.ts`.

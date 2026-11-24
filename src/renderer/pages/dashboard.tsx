@@ -24,10 +24,14 @@ export function DashboardPage() {
   const { projects, loading, error, refresh } = useProjects(showArchived)
   const [open, setOpen] = useState(false)
   const [summary, setSummary] = useState<TaskSummary | null>(null)
+  const [running, setRunning] = useState<number | null>(null)
   useEffect(() => {
-    const load = () => void window.orbyte.tasks.summary().then((r) => { if (r.ok) setSummary(r.data) })
+    const load = () => {
+      void window.orbyte.tasks.summary().then((r) => { if (r.ok) setSummary(r.data) })
+      void window.orbyte.agents.summary().then((r) => { if (r.ok) setRunning(r.data.running) })
+    }
     load()
-    return window.orbyte.onEvent((e) => { if (e.type === 'tasks_changed' || e.type === 'project_updated') load() })
+    return window.orbyte.onEvent((e) => { if (e.type === 'tasks_changed' || e.type === 'project_updated' || e.type === 'agent_changed') load() })
   }, [])
   const [actionError, setActionError] = useState<string | null>(null)
 
@@ -57,7 +61,7 @@ export function DashboardPage() {
       <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Projects" value={projects.filter((p) => p.status === 'active').length} />
         <Stat label="Open tasks" value={summary?.open ?? '—'} note={summary ? `${summary.byStatus['in_progress'] ?? 0} in progress` : undefined} />
-        <Stat label="Developer agents" value="—" note="Phase 4" />
+        <Stat label="Developer agents" value={running ?? '—'} note="running now" />
         <Stat label="Pending approvals" value="—" note="Phase 5" />
       </section>
 

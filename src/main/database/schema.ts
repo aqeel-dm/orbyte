@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { check, index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import type { OnboardingData } from '@shared/schemas/onboarding'
 import type { ProposalItem } from '@shared/schemas/task'
 
@@ -110,4 +110,38 @@ export const taskProposals = sqliteTable(
     decidedAt: integer('decided_at')
   },
   (t) => [index('proposals_project_idx').on(t.projectId, t.status)]
+)
+
+export const developerAgents = sqliteTable(
+  'developer_agents',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    taskId: text('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    status: text('status', { enum: ['starting', 'running', 'exited', 'failed', 'stopped', 'interrupted'] }).notNull(),
+    pid: integer('pid'),
+    /** The Claude Code session id Orbyte chose with --session-id (for resuming later). Never sent to the renderer. */
+    claudeSessionId: text('claude_session_id').notNull(),
+    worktreePath: text('worktree_path').notNull(),
+    branch: text('branch').notNull(),
+    baseBranch: text('base_branch').notNull(),
+    baseCommit: text('base_commit').notNull(),
+    worktreeRemoved: integer('worktree_removed', { mode: 'boolean' }).notNull().default(false),
+    currentActivity: text('current_activity').notNull().default(''),
+    exitCode: integer('exit_code'),
+    startedAt: integer('started_at'),
+    endedAt: integer('ended_at'),
+    createdAt: integer('created_at').notNull().default(now),
+    updatedAt: integer('updated_at').notNull().default(now)
+  },
+  (t) => [
+    index('agents_project_idx').on(t.projectId, t.status),
+    // At most one live agent per task, enforced by the database as well as the service.
+    uniqueIndex('agents_one_active_per_task').on(t.taskId).where(sql`${t.status} in ('starting', 'running')`)
+  ]
 )

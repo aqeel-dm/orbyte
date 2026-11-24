@@ -33,8 +33,21 @@ export const IPC = {
   activity: {
     list: 'activity:list'
   },
+  agents: {
+    list: 'agents:list',
+    start: 'agents:start',
+    stop: 'agents:stop',
+    discard: 'agents:discard',
+    attach: 'agents:attach',
+    detach: 'agents:detach',
+    write: 'agents:write',
+    resize: 'agents:resize',
+    summary: 'agents:summary'
+  },
   /** Main -> renderer push channel (one fixed channel; payloads are validated). */
   events: {
-    app: 'events:app'
+    app: 'events:app',
+    /** High-volume terminal output; delivered only to windows that attached to that agent. */
+    terminal: 'events:terminal'
   }
 } as const
