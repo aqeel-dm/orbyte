@@ -108,6 +108,13 @@ export class TaskRepository {
     })
   }
 
+  /** Keeps the task's plan text and approval column in step with the plan and approval records. */
+  setPlanState(taskId: string, patch: { implementationPlan?: string; approvalStatus?: Task['approvalStatus'] }, tx?: DbOrTx): void {
+    this.inTx(tx, (t) => {
+      t.update(tasks).set({ ...patch, updatedAt: Date.now() }).where(eq(tasks.id, taskId)).run()
+    })
+  }
+
   /** Counts by status across projects that are not archived. */
   summary(): { open: number; byStatus: Record<string, number> } {
     const rows = this.db

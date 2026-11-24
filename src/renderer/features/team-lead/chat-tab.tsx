@@ -37,7 +37,7 @@ export function ChatTab({ projectId, disabled, disabledReason, pendingProposals,
         ))}
         {busy && (
           <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-lg border border-border bg-card px-3 py-2 text-sm">
-            {chat.draft || <span className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />{chat.working === 'onboarding' ? 'Onboarding the project…' : 'Team Lead is working…'}</span>}
+            {chat.draft || <span className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />{chat.working === 'onboarding' ? 'Onboarding the project…' : chat.working === 'review' ? 'Reviewing a plan…' : 'Team Lead is working…'}</span>}
             {chat.tools.length > 0 && <div className="mt-2 text-xs text-muted-foreground">Read-only tools used: {chat.tools.join(', ')}</div>}
           </div>
         )}

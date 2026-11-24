@@ -1,6 +1,6 @@
 import type { Options } from '@anthropic-ai/claude-agent-sdk'
 import { TEAM_LEAD_PROMPT } from './prompt'
-import { TEAM_LEAD_TOOL_NAMES, type TeamLeadTaskTools } from './tools'
+import { TEAM_LEAD_REVIEW_TOOL_NAMES, TEAM_LEAD_TOOL_NAMES, type TeamLeadReviewTools, type TeamLeadTaskTools } from './tools'
 
 export interface TeamLeadRunRequest {
   prompt: string
@@ -10,6 +10,10 @@ export interface TeamLeadRunRequest {
   trustRepoSettings: boolean
   /** Task tools for chat turns. Null for onboarding and anything else: no task tools, no MCP server. */
   taskTools: TeamLeadTaskTools | null
+  /** Review tool, for plan-review turns only. Never together with task tools. */
+  reviewTools?: TeamLeadReviewTools | null
+  /** A one-shot session that is not saved, so nothing from it can carry into the user's chat. */
+  ephemeral?: boolean
   abortController: AbortController
   maxTurns?: number
 }
@@ -26,12 +30,13 @@ export interface TeamLeadRunRequest {
  * Verified against the installed SDK: init.tools was exactly [Glob, Grep, Read].
  */
 export function buildTeamLeadOptions(req: TeamLeadRunRequest): Options {
+  const allowed: string[] = [...(req.taskTools ? TEAM_LEAD_TOOL_NAMES : []), ...(req.reviewTools ? TEAM_LEAD_REVIEW_TOOL_NAMES : [])]
   return {
     cwd: req.repoPath,
     tools: ['Read', 'Glob', 'Grep'],
-    disallowedTools: req.taskTools ? ['Edit', 'Write', 'NotebookEdit', 'Bash'] : ['Edit', 'Write', 'NotebookEdit', 'Bash', 'mcp__*'],
+    disallowedTools: allowed.length > 0 ? ['Edit', 'Write', 'NotebookEdit', 'Bash'] : ['Edit', 'Write', 'NotebookEdit', 'Bash', 'mcp__*'],
     // Exact allowlist of Orbyte's own tools. Under dontAsk a tool that is not allowed here cannot run.
-    ...(req.taskTools ? { allowedTools: [...TEAM_LEAD_TOOL_NAMES] } : {}),
+    ...(allowed.length > 0 ? { allowedTools: allowed } : {}),
     strictMcpConfig: true,
     permissionMode: 'dontAsk',
     // Repo settings (hooks etc.) load only after the user trusted this project; otherwise user settings only.
@@ -41,6 +46,7 @@ export function buildTeamLeadOptions(req: TeamLeadRunRequest): Options {
     // The SDK replaces the subprocess environment when `env` is given.
     env: { ...process.env },
     abortController: req.abortController,
+    ...(req.ephemeral ? { persistSession: false } : {}),
     ...(req.maxTurns !== undefined ? { maxTurns: req.maxTurns } : {}),
     ...(req.resumeSessionId ? { resume: req.resumeSessionId } : {})
   }

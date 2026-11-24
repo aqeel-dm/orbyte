@@ -44,6 +44,13 @@ export const IPC = {
     resize: 'agents:resize',
     summary: 'agents:summary'
   },
+  plans: {
+    get: 'plans:get',
+    approve: 'plans:approve',
+    reject: 'plans:reject',
+    revoke: 'plans:revoke',
+    requestReview: 'plans:requestReview'
+  },
   /** Main -> renderer push channel (one fixed channel; payloads are validated). */
   events: {
     app: 'events:app',

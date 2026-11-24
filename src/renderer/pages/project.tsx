@@ -16,7 +16,8 @@ export function ProjectPage() {
   const { id = '' } = useParams()
   const { project, loading, error, refresh } = useProject(id)
   const [tab, setTab] = useState<Tab>('overview')
-  const { pending } = useTasks(id)
+  const { pending, tasks } = useTasks(id)
+  const awaitingDecision = tasks.filter((t) => t.status === 'awaiting_approval' && t.approvalStatus === 'pending').length
   const { running } = useAgents(id)
   const [agentId, setAgentId] = useState<string | null>(null)
 
@@ -31,7 +32,7 @@ export function ProjectPage() {
       <nav className="mt-4 flex border-b border-border" aria-label="Project sections">
         <button className={tabClass('overview')} onClick={() => setTab('overview')}>Overview</button>
         <button className={tabClass('chat')} onClick={() => setTab('chat')}>Team Lead</button>
-        <button className={tabClass('tasks')} onClick={() => setTab('tasks')}>Tasks{pending.length > 0 && <span className="ml-1.5 rounded-full bg-primary px-1.5 py-0.5 text-xs text-primary-foreground" title="Proposals waiting for your review">{pending.length}</span>}</button>
+        <button className={tabClass('tasks')} onClick={() => setTab('tasks')}>Tasks{pending.length + awaitingDecision > 0 && <span className="ml-1.5 rounded-full bg-primary px-1.5 py-0.5 text-xs text-primary-foreground" title="Proposals and plans waiting for your decision">{pending.length + awaitingDecision}</span>}</button>
         <button className={tabClass('agents')} onClick={() => setTab('agents')}>Agents{running > 0 && <span className="ml-1.5 rounded-full bg-success px-1.5 py-0.5 text-xs text-background" title="Agents running">{running}</span>}</button>
       </nav>
       <div className="mt-4 min-h-0 flex-1">

@@ -50,6 +50,13 @@ const api: OrbyteApi = {
     resize: (projectId, agentId, cols, rows) => ipcRenderer.invoke(IPC.agents.resize, { projectId, agentId, cols, rows }),
     summary: () => ipcRenderer.invoke(IPC.agents.summary)
   },
+  plans: {
+    get: (projectId, taskId) => ipcRenderer.invoke(IPC.plans.get, { projectId, taskId }),
+    approve: (projectId, taskId, planId) => ipcRenderer.invoke(IPC.plans.approve, { projectId, taskId, planId }),
+    reject: (projectId, taskId, planId, reason) => ipcRenderer.invoke(IPC.plans.reject, { projectId, taskId, planId, reason }),
+    revoke: (projectId, taskId) => ipcRenderer.invoke(IPC.plans.revoke, { projectId, taskId }),
+    requestReview: (projectId, taskId, planId) => ipcRenderer.invoke(IPC.plans.requestReview, { projectId, taskId, planId })
+  },
   onTerminalData: (listener) => {
     const handler = (_e: unknown, payload: unknown): void => {
       const parsed = terminalEventSchema.safeParse(payload)

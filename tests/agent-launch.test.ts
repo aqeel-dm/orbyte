@@ -4,14 +4,15 @@ import { PLANNING_DENIED_TOOLS, PLANNING_TOOLS, agentEnv, buildAgentLaunch } fro
 import { TerminalBuffer, lastTerminalTitle } from '../src/main/modules/agents/developers/terminal-buffer'
 import { TerminalHub } from '../src/main/modules/agents/developers/terminal-hub'
 
-const input = { taskTitle: 'Add login', taskDescription: 'Use sessions.', branch: 'orbyte/add-login-1234abcd', baseBranch: 'main', sessionId: '11111111-1111-4111-8111-111111111111', repoSettingsTrust: 'trusted' as const }
+const planServer = { command: '/fake/electron', scriptPath: '/fake/out/main/plan-server.js', inboxDir: '/fake/inbox/agent-1' }
+const input = { planServer, taskTitle: 'Add login', taskDescription: 'Use sessions.', branch: 'orbyte/add-login-1234abcd', baseBranch: 'main', sessionId: '11111111-1111-4111-8111-111111111111', repoSettingsTrust: 'trusted' as const }
 
 describe('buildAgentLaunch', () => {
   it('starts in plan mode with a known session id, the write/exec tools denied, and the prompt after --', () => {
     const args = buildAgentLaunch(input)
     expect(args.slice(0, 4)).toEqual(['--permission-mode', 'plan', '--session-id', input.sessionId])
     expect(args).toContain(`--disallowedTools=${PLANNING_DENIED_TOOLS.join(',')}`)
-    expect(PLANNING_DENIED_TOOLS).toEqual(expect.arrayContaining(['Edit', 'Write', 'NotebookEdit', 'Bash', 'WebFetch', 'WebSearch', 'Task', 'mcp__*']))
+    expect(PLANNING_DENIED_TOOLS).toEqual(['Edit', 'Write', 'NotebookEdit', 'Bash', 'WebFetch', 'WebSearch', 'Task']) // no mcp__* here: it would also block Orbyte's own plan tool
     const sep = args.indexOf('--')
     expect(sep).toBe(args.length - 2) // exactly one argument (the prompt) follows
     expect(args[sep + 1]).toContain('Add login')

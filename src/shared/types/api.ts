@@ -1,6 +1,7 @@
 import type { DiscoveryResult } from '../schemas/onboarding'
 import type { ListProjectsInput, PickDirectoryResult, Project, RegisterProjectInput } from '../schemas/project'
 import type { AppEvent, ChatMessage, SendMessageResult } from '../schemas/team-lead'
+import type { PlanApproval, PlanBundle } from '../schemas/plan'
 import type { AgentSummary, AttachResult, DeveloperAgent, TerminalEvent } from '../schemas/agent'
 import type { ActivityEvent, CreateTaskInput, ProposalItem, Task, TaskProposal, TaskSummary, UpdateTaskInput } from '../schemas/task'
 import type { TaskStatus } from '../task-state'
@@ -61,6 +62,17 @@ export interface OrbyteApi {
     write(projectId: string, agentId: string, data: string): Promise<Result<null>>
     resize(projectId: string, agentId: string, cols: number, rows: number): Promise<Result<null>>
     summary(): Promise<Result<AgentSummary>>
+  }
+  plans: {
+    /** Every plan version for a task with its Team Lead reviews, approval records and the gate's verdict. */
+    get(projectId: string, taskId: string): Promise<Result<PlanBundle>>
+    /** Your approval of the CURRENT plan version. The only thing that can authorize execution. */
+    approve(projectId: string, taskId: string, planId: string): Promise<Result<PlanApproval>>
+    reject(projectId: string, taskId: string, planId: string, reason: string): Promise<Result<PlanApproval>>
+    /** Withdraws a standing approval before execution starts. */
+    revoke(projectId: string, taskId: string): Promise<Result<PlanBundle>>
+    /** Asks the Team Lead to (re)review the current plan. Advice only. */
+    requestReview(projectId: string, taskId: string, planId: string): Promise<Result<null>>
   }
   /** Terminal output for agents this window attached to. Returns an unsubscribe function. */
   onTerminalData(listener: (event: TerminalEvent) => void): () => void

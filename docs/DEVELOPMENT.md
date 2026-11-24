@@ -34,6 +34,9 @@ Needs a working Claude Code login (uses your subscription tokens). The native fo
 3. Relaunch with `--remote-debugging-port=9333` and drive `window.orbyte.*` over the DevTools protocol: `onboarding.start`, `teamLead.send`, `onEvent`.
 Check that an edit request is refused and `git status` of the repo stays clean.
 
+## The submit_plan server
+Claude Code starts `out/main/plan-server.js` (a second electron-vite entry) as an MCP server for each planning agent, using the Electron binary with `ELECTRON_RUN_AS_NODE=1`. `pnpm build` produces it, and it resolves `@modelcontextprotocol/sdk` and its shared chunk from `out/main` and `node_modules`. You can smoke-test it by speaking MCP over stdio: `ELECTRON_RUN_AS_NODE=1 ORBYTE_PLAN_INBOX=/tmp/inbox electron out/main/plan-server.js`, then `initialize`, `tools/list` and a `tools/call` of `submit_plan`; a validated plan file appears in the inbox.
+
 ## End-to-end check of developer agents
 Uses the real `claude` CLI (and your usage). Use a **scratch git repository with one commit**, not a real project: agents add branches and worktrees to the repository they work on.
 1. Build, launch once with `--user-data-dir=<tmp>` so migrations run, then insert a project row for the scratch repo (`repo_settings_trust` = `untrusted` or `trusted`) with `ELECTRON_RUN_AS_NODE=1 electron seed.cjs`.

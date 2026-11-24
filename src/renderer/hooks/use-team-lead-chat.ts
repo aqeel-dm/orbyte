@@ -9,11 +9,12 @@ export const AUTH_HELP = "Claude isn't signed in. Open a terminal, run `claude`,
 export function useTeamLeadChat(projectId: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useState('')
-  const [working, setWorking] = useState<null | 'chat' | 'onboarding'>(null)
+  const [working, setWorking] = useState<null | 'chat' | 'onboarding' | 'review'>(null)
   const [tools, setTools] = useState<string[]>([])
   const [error, setError] = useState<ChatError | null>(null)
   const [loading, setLoading] = useState(true)
   const turnRef = useRef<string | null>(null)
+  const workingRef = useRef<'chat' | 'onboarding' | 'review' | null>(null)
 
   const loadHistory = useCallback(async () => {
     const res = await window.orbyte.teamLead.history(projectId)
@@ -28,9 +29,10 @@ export function useTeamLeadChat(projectId: string) {
     if (e.type === 'project_updated' || e.projectId !== projectId) return
     switch (e.type) {
       case 'turn_started':
-        turnRef.current = e.turnId; setWorking(e.purpose); setDraft(''); setTools([]); setError(null); break
+        turnRef.current = e.turnId; workingRef.current = e.purpose; setWorking(e.purpose); setDraft(''); setTools([]); setError(null); break
       case 'text_delta':
-        if (e.turnId === turnRef.current) setDraft((d) => d + e.text); break
+        // Only chat replies are shown as they stream; onboarding and review turns are background work.
+        if (e.turnId === turnRef.current && workingRef.current === 'chat') setDraft((d) => d + e.text); break
       case 'tool_activity':
         if (e.turnId === turnRef.current) setTools((t) => (t.includes(e.tool) ? t : [...t, e.tool])); break
       case 'turn_completed':

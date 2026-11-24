@@ -58,15 +58,15 @@ describe('AgentService.start', () => {
     expect(s.agentRepo.list(s.project.id)).toEqual([])
   })
 
-  it('only starts a Ready task whose dependencies are completed', async () => {
+  it('only starts a Ready task, but a task with unfinished dependencies may be PLANNED (execution needs them done)', async () => {
     const s = makeAgentStack()
     const backlog = s.tasks.create({ projectId: s.project.id, title: 'Not ready' })
     expect(await code(s.service.start(s.project.id, backlog.id))).toBe('TASK_NOT_READY')
     const dep = s.tasks.create({ projectId: s.project.id, title: 'Dep' })
     const child = s.tasks.create({ projectId: s.project.id, title: 'Child', dependsOnTaskIds: [dep.id] })
     s.tasks.transition(s.project.id, child.id, 'ready', 'user')
-    expect(await code(s.service.start(s.project.id, child.id))).toBe('DEPENDENCIES_INCOMPLETE')
-    expect(s.pty.procs).toHaveLength(0)
+    expect((await s.service.start(s.project.id, child.id)).status).toBe('running') // planning is read-only
+    expect(s.taskRepo.get(child.id)?.status).toBe('planning')
   })
 
   it('cannot start a task from another project, or in an archived project', async () => {

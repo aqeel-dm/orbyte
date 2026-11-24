@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import type { OnboardingData } from '@shared/schemas/onboarding'
+import type { SubmittedPlan } from '@shared/schemas/plan'
 import type { ProposalItem } from '@shared/schemas/task'
 
 const now = sql`(unixepoch() * 1000)`
@@ -143,5 +144,63 @@ export const developerAgents = sqliteTable(
     index('agents_project_idx').on(t.projectId, t.status),
     // At most one live agent per task, enforced by the database as well as the service.
     uniqueIndex('agents_one_active_per_task').on(t.taskId).where(sql`${t.status} in ('starting', 'running')`)
+  ]
+)
+
+export const taskPlans = sqliteTable(
+  'task_plans',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    taskId: text('task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+    agentId: text('agent_id').notNull().references(() => developerAgents.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    content: text('content', { mode: 'json' }).$type<SubmittedPlan>().notNull(),
+    /** sha256 of the canonical plan content; approvals are tied to it and re-checked by the gate. */
+    contentHash: text('content_hash').notNull(),
+    status: text('status', { enum: ['current', 'superseded'] }).notNull().default('current'),
+    submittedAt: integer('submitted_at').notNull().default(now)
+  },
+  (t) => [uniqueIndex('plans_task_version').on(t.taskId, t.version), index('plans_task_status_idx').on(t.taskId, t.status)]
+)
+
+export const planReviews = sqliteTable(
+  'plan_reviews',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    taskId: text('task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+    planId: text('plan_id').notNull().references(() => taskPlans.id, { onDelete: 'cascade' }),
+    planVersion: integer('plan_version').notNull(),
+    reviewer: text('reviewer', { enum: ['team_lead'] }).notNull(),
+    recommendation: text('recommendation', { enum: ['approve', 'revise', 'reject'] }).notNull(),
+    summary: text('summary').notNull(),
+    concerns: text('concerns', { mode: 'json' }).$type<string[]>().notNull().default([]),
+    createdAt: integer('created_at').notNull().default(now)
+  },
+  (t) => [index('reviews_plan_idx').on(t.planId)]
+)
+
+export const planApprovals = sqliteTable(
+  'plan_approvals',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    taskId: text('task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+    agentId: text('agent_id').notNull().references(() => developerAgents.id, { onDelete: 'cascade' }),
+    planId: text('plan_id').notNull().references(() => taskPlans.id, { onDelete: 'cascade' }),
+    planVersion: integer('plan_version').notNull(),
+    planHash: text('plan_hash').notNull(),
+    reviewer: text('reviewer', { enum: ['user'] }).notNull(),
+    status: text('status', { enum: ['approved', 'rejected'] }).notNull(),
+    reason: text('reason').notNull().default(''),
+    decidedAt: integer('decided_at').notNull().default(now),
+    invalidatedAt: integer('invalidated_at'),
+    invalidationReason: text('invalidation_reason')
+  },
+  (t) => [
+    index('approvals_task_idx').on(t.taskId),
+    // At most one VALID approval per task, enforced by the database as well as the service.
+    uniqueIndex('approvals_one_valid_per_task').on(t.taskId).where(sql`${t.status} = 'approved' and ${t.invalidatedAt} is null`)
   ]
 )

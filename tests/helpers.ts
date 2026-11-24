@@ -81,6 +81,11 @@ import { AgentRepository } from '../src/main/modules/agents/developers/agent-rep
 import { AgentService, type PtyFactory, type PtyProcess } from '../src/main/modules/agents/developers/agent-service'
 import { TerminalHub } from '../src/main/modules/agents/developers/terminal-hub'
 import { GitWorktrees } from '../src/main/modules/agents/developers/worktrees'
+import { PlanInbox } from '../src/main/modules/agents/developers/plan-inbox'
+import { ApprovalService } from '../src/main/modules/orchestration/approval-service'
+import { PlanRepository } from '../src/main/modules/orchestration/plan-repository'
+import { PlanService } from '../src/main/modules/orchestration/plan-service'
+import type { SubmittedPlan, TaskPlan } from '../src/shared/schemas/plan'
 
 export class FakePty implements PtyProcess {
   pid = 4242
@@ -113,7 +118,7 @@ export class FakePtyFactory implements PtyFactory {
 }
 
 /** Real DB, real temp git repo and worktrees, fake processes. */
-export function makeAgentStack(opts: { commit?: boolean; trust?: 'unset' | 'trusted' | 'untrusted'; git?: boolean; maxActive?: number; claude?: string | null; env?: NodeJS.ProcessEnv; killGraceMs?: number } = {}) {
+export function makeAgentStack(opts: { commit?: boolean; trust?: 'unset' | 'trusted' | 'untrusted'; git?: boolean; maxActive?: number; claude?: string | null; env?: NodeJS.ProcessEnv; killGraceMs?: number; inbox?: PlanInbox } = {}) {
   const t = makeTaskStack()
   const repoPath = makeGitRepo(opts.commit ?? true)
   const project = t.addProject({ repoPath, defaultBranch: 'main', isGitRepo: opts.git ?? true }, opts.trust ?? 'trusted')
@@ -122,12 +127,25 @@ export function makeAgentStack(opts: { commit?: boolean; trust?: 'unset' | 'trus
   const hub = new TerminalHub((windowId, e) => sent.push({ windowId, agentId: e.agentId, data: e.data }))
   const worktreeRoot = tempDir('orbyte-wt-'); const logDir = tempDir('orbyte-logs-')
   const agentRepo = new AgentRepository(t.handle.db)
+  const inbox = opts.inbox ?? new PlanInbox(tempDir('orbyte-inbox-'))
+  const planRepo = new PlanRepository(t.handle.db)
+  const submitted: TaskPlan[] = []
   let service!: AgentService
-  const tasks = new TaskService({ projects: t.projects, tasks: t.taskRepo, emit: (e) => t.events.push(e), onLeaveActive: (id) => service.onTaskLeft(id) })
+  let approvalsRef: ApprovalService | undefined
+  const tasks = new TaskService({ projects: t.projects, tasks: t.taskRepo, emit: (e) => t.events.push(e), onLeaveActive: (id) => { service.onTaskLeft(id); approvalsRef?.onTaskLeft(id) } })
+  const planService = new PlanService({
+    agents: agentRepo, taskRepo: t.taskRepo, tasks, plans: planRepo, emit: (e) => t.events.push(e),
+    onPlanSubmitted: (plan) => { submitted.push(plan) }
+  })
+  const approvals = new ApprovalService({
+    db: t.handle.db, projects: t.projects, taskRepo: t.taskRepo, tasks, agents: agentRepo, plans: planRepo, emit: (e) => t.events.push(e)
+  })
+  approvalsRef = approvals
   const make = (extra: Partial<ConstructorParameters<typeof AgentService>[0]> = {}) => new AgentService({
     projects: t.projects, taskRepo: t.taskRepo, tasks, agents: agentRepo, worktrees: new GitWorktrees(), pty, hub,
     resolveClaude: () => (opts.claude === undefined ? '/fake/bin/claude' : opts.claude),
     env: () => opts.env ?? { PATH: '/usr/bin', HOME: '/home/u' },
+    inbox, planServer: { command: '/fake/electron', scriptPath: '/fake/plan-server.js' }, onPlan: (id, plan) => void planService.ingest(id, plan),
     worktreeRoot, logDir, emit: (e) => t.events.push(e), flushMs: 5, killGraceMs: opts.killGraceMs ?? 30,
     ...(opts.maxActive !== undefined ? { maxActive: opts.maxActive } : {}),
     ...extra
@@ -138,6 +156,11 @@ export function makeAgentStack(opts: { commit?: boolean; trust?: 'unset' | 'trus
     const task = tasks.create({ projectId: project.id, title, description })
     return tasks.transition(project.id, task.id, 'ready', 'user')
   }
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
-  return { ...t, tasks, repoPath, project, pty, sent, hub, worktreeRoot, logDir, agentRepo, get service() { return service }, restart: (extra: Partial<ConstructorParameters<typeof AgentService>[0]> = {}) => (service = make(extra)), readyTask, sleep }
+  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+  /** What an agent's submit_plan tool does: drop a plan file in the agent's inbox. */
+  const submitPlan = (agentId: string, plan: Partial<SubmittedPlan> = {}, name = `plan-${Date.now()}-${Math.random().toString(16).slice(2)}.json`) => {
+    const body = { plan: { summary: 'Add the feature', steps: ['Do it'], files: [], tests: [], risks: [], ...plan } }
+    require('node:fs').writeFileSync(join(inbox.dirFor(agentId), name), JSON.stringify(body))
+  }
+  return { ...t, inbox, planRepo, planService, approvals, submitted, submitPlan, tasks, repoPath, project, pty, sent, hub, worktreeRoot, logDir, agentRepo, get service() { return service }, restart: (extra: Partial<ConstructorParameters<typeof AgentService>[0]> = {}) => (service = make(extra)), readyTask, sleep }
 }

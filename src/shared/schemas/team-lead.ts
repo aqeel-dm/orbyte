@@ -20,7 +20,7 @@ export const sendMessageResultSchema = z.object({ turnId: z.string(), userMessag
 
 /** Events pushed from main to the renderer. Every event is scoped by projectId. */
 export const appEventSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('turn_started'), projectId: z.string(), turnId: z.string(), purpose: z.enum(['chat', 'onboarding']) }),
+  z.object({ type: z.literal('turn_started'), projectId: z.string(), turnId: z.string(), purpose: z.enum(['chat', 'onboarding', 'review']) }),
   z.object({ type: z.literal('text_delta'), projectId: z.string(), turnId: z.string(), text: z.string() }),
   z.object({ type: z.literal('tool_activity'), projectId: z.string(), turnId: z.string(), tool: z.string() }),
   z.object({ type: z.literal('turn_completed'), projectId: z.string(), turnId: z.string(), messageId: z.string().nullable() }),
@@ -28,7 +28,8 @@ export const appEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('project_updated'), projectId: z.string() }),
   z.object({ type: z.literal('tasks_changed'), projectId: z.string() }),
   z.object({ type: z.literal('proposals_changed'), projectId: z.string() }),
-  z.object({ type: z.literal('agent_changed'), projectId: z.string(), agentId: z.string() })
+  z.object({ type: z.literal('agent_changed'), projectId: z.string(), agentId: z.string() }),
+  z.object({ type: z.literal('plans_changed'), projectId: z.string(), taskId: z.string() })
 ])
 
 export type ChatMessage = z.infer<typeof chatMessageSchema>

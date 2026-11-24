@@ -19,7 +19,8 @@ export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
     resolve: { alias: { '@shared': shared } },
-    build: { rollupOptions: { input: { index: resolve(__dirname, 'src/main/index.ts') } } }
+    // plan-server is a second entry: Claude Code starts it as a child process (see src/main/agent-mcp).
+    build: { rollupOptions: { input: { index: resolve(__dirname, 'src/main/index.ts'), 'plan-server': resolve(__dirname, 'src/main/agent-mcp/plan-server.ts') } } }
   },
   preload: {
     plugins: [externalizeDepsPlugin({ exclude: ['zod'] })],

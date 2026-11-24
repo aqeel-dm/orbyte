@@ -5,9 +5,9 @@ import type { ProjectRepository } from '../../projects/repository'
 import type { ChatRepository } from './chat-repository'
 import { classifyError, mapSdkMessage } from './events'
 import type { TeamLeadRunner } from './runner'
-import type { TeamLeadTaskTools } from './tools'
+import type { TeamLeadReviewTools, TeamLeadTaskTools } from './tools'
 
-export type TurnPurpose = 'chat' | 'onboarding'
+export type TurnPurpose = 'chat' | 'onboarding' | 'review'
 export type TurnOutcome = { ok: true; text: string } | { ok: false; code: string; message: string; partial?: string }
 
 const DEFAULT_TURN_TIMEOUT_MS = 15 * 60_000
@@ -22,6 +22,7 @@ const PUBLIC_MESSAGES: Record<string, string> = {
   NO_RESULT: 'The Team Lead stopped without a result.',
   NOT_FOUND: 'Project not found.',
   TURN_IN_PROGRESS: 'The Team Lead is already working on a turn.',
+  SHUTTING_DOWN: 'Orbyte is closing.',
   TRUST_REQUIRED: "Decide whether to use this repository's Claude settings (Overview tab) before starting the Team Lead.",
   INTERNAL: 'Unexpected error. See the application log.',
   AGENT_ERROR: 'The Team Lead failed. See the application log for details.'
@@ -46,6 +47,8 @@ interface TurnState {
 export class TeamLeadService {
   private readonly active = new Map<string, AbortController>()
   private readonly running = new Set<Promise<unknown>>()
+  /** Set when the app is quitting: no new turn may start. */
+  private closing = false
 
   constructor(private readonly deps: TeamLeadDeps) {}
 
@@ -81,6 +84,7 @@ export class TeamLeadService {
 
   /** Aborts every active turn and waits briefly for them to settle (call before closing the DB on quit). */
   async shutdown(graceMs = 3000): Promise<void> {
+    this.closing = true
     for (const controller of this.active.values()) controller.abort()
     await Promise.race([Promise.allSettled([...this.running]), new Promise((r) => setTimeout(r, graceMs))])
   }
@@ -96,6 +100,8 @@ export class TeamLeadService {
     saveToChat: boolean
     maxTurns?: number
     turnId?: string
+    /** Only for purpose 'review': the tool that records the review of one specific plan. */
+    reviewTools?: TeamLeadReviewTools
   }): Promise<TurnOutcome> {
     const turnId = opts.turnId ?? randomUUID()
     const p = this.runTurnGuarded({ ...opts, turnId })
@@ -119,6 +125,7 @@ export class TeamLeadService {
     const { projectId, purpose, turnId } = opts
     const project = this.deps.projects.get(projectId)
     if (!project) return { ok: false, code: 'NOT_FOUND', message: publicMessage('NOT_FOUND') }
+    if (this.closing) return { ok: false, code: 'SHUTTING_DOWN', message: publicMessage('SHUTTING_DOWN') }
     // A second turn is refused without emitting events: events are scoped per project, and
     // a stray terminal event would corrupt the turn that is actually running.
     if (this.active.has(projectId)) return { ok: false, code: 'TURN_IN_PROGRESS', message: publicMessage('TURN_IN_PROGRESS') }
@@ -133,7 +140,9 @@ export class TeamLeadService {
 
     try {
       this.emit({ type: 'turn_started', projectId, turnId, purpose })
-      const outcome = await this.runWithResumeFallback({ ...opts, purpose }, turnId, abort, state, project.teamLeadSessionId)
+      // A plan comes from an agent and may carry hostile text, so a review never joins the user's chat
+      // session: it runs in its own one-shot session and never touches the stored session id.
+      const outcome = await this.runWithResumeFallback({ ...opts, purpose }, turnId, abort, state, purpose === 'review' ? null : project.teamLeadSessionId)
 
       if (outcome.ok) {
         const messageId = opts.saveToChat && outcome.text.trim() ? this.deps.chat.add(projectId, 'assistant', outcome.text).id : null
@@ -151,7 +160,7 @@ export class TeamLeadService {
   }
 
   private async runWithResumeFallback(
-    opts: { projectId: string; prompt: string; maxTurns?: number; purpose: TurnPurpose },
+    opts: { projectId: string; prompt: string; maxTurns?: number; purpose: TurnPurpose; reviewTools?: TeamLeadReviewTools },
     turnId: string,
     abort: AbortController,
     state: TurnState,
@@ -167,7 +176,7 @@ export class TeamLeadService {
   }
 
   private async attempt(
-    opts: { projectId: string; prompt: string; maxTurns?: number; purpose: TurnPurpose },
+    opts: { projectId: string; prompt: string; maxTurns?: number; purpose: TurnPurpose; reviewTools?: TeamLeadReviewTools },
     turnId: string,
     abort: AbortController,
     state: TurnState,
@@ -191,6 +200,9 @@ export class TeamLeadService {
         trustRepoSettings: project.repoSettingsTrust === 'trusted',
         // Only chat turns (started by the user's message) get task tools. Onboarding never proposes work.
         taskTools: opts.purpose === 'chat' && this.deps.taskToolsFor ? this.deps.taskToolsFor(projectId) : null,
+        // Only review turns get the review tool, and then no task tools.
+        reviewTools: opts.purpose === 'review' ? (opts.reviewTools ?? null) : null,
+        ephemeral: opts.purpose === 'review',
         abortController: abort,
         ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {})
       })
@@ -198,7 +210,7 @@ export class TeamLeadService {
         for (const sig of mapSdkMessage(raw)) {
           switch (sig.kind) {
             case 'session':
-              if (sig.sessionId !== this.deps.projects.get(projectId)?.teamLeadSessionId) {
+              if (opts.purpose !== 'review' && sig.sessionId !== this.deps.projects.get(projectId)?.teamLeadSessionId) {
                 this.deps.projects.setTeamLeadSession(projectId, sig.sessionId)
               }
               break

@@ -22,7 +22,7 @@ Source is the reference; if this document disagrees with the code, fix the docum
 - `ipc/projects.ts`: thin handlers for projects, onboarding and Team Lead. The native folder dialog lives here. `ipc/handle.ts` also holds the sender check.
 - `modules/projects/{repository,service}.ts`: data access and business rules (register, archive/restore, status). `discovery.ts`: read-only repo-instruction discovery. `onboarding.ts`: onboarding state machine.
 - `modules/tasks/`: `repository.ts`, `service.ts` (the single place task state changes; every call is checked against the project id), `dependencies.ts` (pure dependency and cycle rules). `src/shared/task-state.ts` is the pure state machine shared with the UI.
-- `modules/orchestration/`: `proposal-service.ts` and `proposal-repository.ts`, the authorization boundary between Team Lead suggestions and real tasks.
+- `modules/orchestration/`: `proposal-service.ts`/`proposal-repository.ts` (Team Lead task suggestions become tasks only when you approve) and, for plans, `plan-service.ts` (ingest and versioning), `plan-repository.ts`, `plan-hash.ts`, `review-service.ts` (Team Lead advice) and `approval-service.ts` (your decisions and the execution gate). `src/main/agent-mcp/plan-server.ts` is a second build entry: the small MCP server Claude Code starts to give an agent its `submit_plan` tool.
 - `modules/agents/developers/`: `agent-service.ts` (start, supervise, stop, discard, attach, recovery), `agent-repository.ts`, `worktrees.ts` (hardened git), `launch.ts` (CLI arguments and env allowlist), `claude-binary.ts`, `pty-node.ts` (the only place node-pty is loaded), `terminal-buffer.ts`, `terminal-hub.ts` (per-window attach), `process-reaper.ts`.
 - `modules/agents/team-lead/`: `options.ts` (read-only SDK options builder), `events.ts` (SDK message to internal signals), `runner.ts` (SDK-backed `TeamLeadRunner`, the test seam), `sdk-loader.ts` (dynamic `import()` of the ESM-only SDK), `service.ts` (turns, session persistence, resume fallback, interrupt), `chat-repository.ts`, `prompt.ts`, `tools.ts` (the in-process `orbyte` MCP server: `list_tasks`, `propose_tasks`).
 - `modules/git/inspect.ts`: read-only repo inspection through `execFile('git', ...)`.
@@ -61,6 +61,15 @@ Source is the reference; if this document disagrees with the code, fix the docum
 
 **Decisions:** one agent per task, always in its own worktree; the real CLI in a real PTY (no emulation); the agent is launched for the planning stage only in Phase 4; Orbyte drives the task state, not the agent.
 
+## Data flow: plan, review, approval (Implemented)
+1. The planning agent investigates with read-only tools and calls its `submit_plan` tool. The MCP server validates the plan and writes it to the agent's private inbox (`userData/plan-inbox/<agentId>`).
+2. `AgentService` polls that inbox every second while the agent runs, and again (waiting for any read in flight) when the agent exits, and hands each plan to `PlanService.ingest`. A valid plan for a task in `planning` becomes the next numbered version (hashed); any earlier version is superseded and any standing approval is invalidated in the same transaction. The task moves to `awaiting_approval`. An identical resubmission while a decision is pending is ignored.
+3. `ReviewService` asks the Team Lead to review the plan automatically (one-shot session, review tool only, waits if the Team Lead is busy, skipped if the plan was replaced). The result is stored as advice.
+4. You read the plan, the advice and the gate's blockers in the plan dialog and approve or reject the CURRENT version. Approval stores the record (task, agent, version, hash, reviewer `user`, status, time). Rejection returns the task to planning (agent alive) or Ready (no live agent).
+5. `ApprovalService.verify` is the gate. `authorizeExecution` (backend only, not wired to the UI; Phase 6 will call it) re-verifies, spends the approval, and moves the task to `in_progress` with `approvalVerified: true`, the only place that flag is passed.
+
+**Decisions:** the Team Lead advises and you decide; an approval is tied to one plan version and hash and is one-shot; the gate re-checks stored state each time; task approval columns are a cache for the UI, never used for decisions.
+
 ## Data flow: onboarding (Implemented)
 `onboarding.start` marks the project `in_progress` (audit event), then in the background: `discoverProject` (read-only), then one bounded Team Lead turn (max 12 turns, not saved to chat) that returns a summary and proposed workflow guidance. Results are stored in `projects.onboarding_data` and status becomes `ready` or `failed`; `project_updated` events refresh the UI. At startup, onboarding left `in_progress` is marked `failed` (`INTERRUPTED`) so it can be retried. Nothing is written to the repository.
 
@@ -71,7 +80,7 @@ Source is the reference; if this document disagrees with the code, fix the docum
 - **Limitation:** non-git directories can be registered; worktree isolation will not apply to them.
 
 ## Planned, not built
-Plan capture and approval gate (Phase 5), execution and review (Phase 6), recovery and packaging (Phase 7). See `ROADMAP.md`. Integrations (Jira, Linear, GitHub Issues) must sit behind an adapter interface so the task model stays provider-neutral.
+Execution (launching an approved execution), result capture and Team Lead implementation review (Phase 6) (Phase 5), execution and review (Phase 6), recovery and packaging (Phase 7). See `ROADMAP.md`. Integrations (Jira, Linear, GitHub Issues) must sit behind an adapter interface so the task model stays provider-neutral.
 
 ## Decisions
 - Electron main as backend, typed IPC, no HTTP server.

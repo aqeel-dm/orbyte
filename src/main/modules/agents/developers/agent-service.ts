@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { MAX_TERMINAL_WRITE_BYTES, type AttachResult, type DeveloperAgent } from '@shared/schemas/agent'
+import type { SubmittedPlan } from '@shared/schemas/plan'
 import type { AppEvent } from '@shared/schemas/team-lead'
 import { AppError } from '@shared/types/result'
 import type { ProjectRepository } from '../../projects/repository'
@@ -9,6 +10,7 @@ import type { TaskRepository } from '../../tasks/repository'
 import type { TaskService } from '../../tasks/service'
 import { AgentRepository, toPublicAgent, type AgentRecord } from './agent-repository'
 import { agentEnv, buildAgentLaunch } from './launch'
+import type { PlanInbox } from './plan-inbox'
 import type { AgentProcessReaper } from './process-reaper'
 import { TerminalBuffer, lastTerminalTitle } from './terminal-buffer'
 import type { TerminalHub } from './terminal-hub'
@@ -36,6 +38,12 @@ export interface AgentServiceDeps {
   pty: PtyFactory
   hub: TerminalHub
   resolveClaude: () => string | null
+  /** Per-agent private directories where the submit_plan tool drops plans. */
+  inbox: PlanInbox
+  /** How Claude Code starts Orbyte's plan server (Electron run as plain Node, plus the built script). */
+  planServer: { command: string; scriptPath: string }
+  /** Called for each plan an agent submits. Never approves anything. */
+  onPlan?: (agentId: string, plan: SubmittedPlan) => void
   /** Ends processes left behind by a crash. Optional so tests can omit it. */
   reaper?: AgentProcessReaper
   env: () => NodeJS.ProcessEnv
@@ -57,6 +65,9 @@ interface Live {
   pending: string
   flushTimer: NodeJS.Timeout | null
   killTimer: NodeJS.Timeout | null
+  inboxTimer: NodeJS.Timeout | null
+  /** The drain in progress, if any: overlapping callers share it instead of skipping. */
+  drainPromise: Promise<void> | null
   title: string
   lastActivityAt: number
   stopRequested: boolean
@@ -105,11 +116,8 @@ export class AgentService {
     const task = this.deps.taskRepo.get(taskId)
     if (!task || task.projectId !== projectId) throw new AppError('NOT_FOUND', 'Task not found.')
     if (task.status !== 'ready') throw new AppError('TASK_NOT_READY', 'Only a task in Ready can be started.')
-    for (const dep of task.dependsOnTaskIds) {
-      if (this.deps.taskRepo.get(dep)?.status !== 'completed') {
-        throw new AppError('DEPENDENCIES_INCOMPLETE', 'This task depends on tasks that are not completed yet.')
-      }
-    }
+    // Planning is read-only, so a task with unfinished dependencies may be planned. Approving a plan for
+    // execution requires the dependencies to be completed (see ApprovalService).
     if (this.starting.has(taskId) || this.deps.agents.activeForTask(taskId)) {
       throw new AppError('AGENT_ALREADY_RUNNING', 'An agent is already working on this task.')
     }
@@ -173,11 +181,13 @@ export class AgentService {
 
     let proc: PtyProcess
     try {
+      const inboxDir = await this.deps.inbox.prepare(id)
       proc = this.deps.pty.spawn(
         claude,
         buildAgentLaunch({
           taskTitle: task.title, taskDescription: task.description, branch, baseBranch, sessionId,
-          repoSettingsTrust: project.repoSettingsTrust === 'trusted' ? 'trusted' : 'untrusted'
+          repoSettingsTrust: project.repoSettingsTrust === 'trusted' ? 'trusted' : 'untrusted',
+          planServer: { command: this.deps.planServer.command, scriptPath: this.deps.planServer.scriptPath, inboxDir }
         }),
         { cwd: worktreePath, env: agentEnv(this.deps.env()), cols: 120, rows: 32 }
       )
@@ -191,12 +201,15 @@ export class AgentService {
     let resolveDone!: () => void
     const done = new Promise<void>((r) => (resolveDone = r))
     const live: Live = {
-      proc, buffer: new TerminalBuffer(), pending: '', flushTimer: null, killTimer: null, title: '', lastActivityAt: 0,
+      proc, buffer: new TerminalBuffer(), pending: '', flushTimer: null, killTimer: null, inboxTimer: null, drainPromise: null, title: '', lastActivityAt: 0,
       stopRequested: false, interrupted: false, done, resolveDone
     }
     this.live.set(id, live)
     proc.onData((d) => this.onData(agent, live, d))
     proc.onExit((e) => void this.onExit(agent, live, e))
+    // Pick up plans the agent submits (polling a private directory; no listener or socket is opened).
+    live.inboxTimer = setInterval(() => void this.drainInbox(agent, live), 1000)
+    live.inboxTimer.unref()
 
     const running = this.deps.agents.markRunning(id, proc.pid)
     this.changed(project.id, id)
@@ -249,6 +262,7 @@ export class AgentService {
     }
     await this.deps.worktrees.deleteBranchIfUnmoved(project.repoPath, agent.branch, agent.baseCommit)
     const updated = this.deps.agents.markWorktreeRemoved(agentId)
+    await this.deps.inbox.remove(agentId)
     this.changed(projectId, agentId)
     return toPublicAgent(updated ?? agent)
   }
@@ -355,6 +369,32 @@ export class AgentService {
     }
   }
 
+  /** Reads any submitted plans and hands them to the plan service. Errors never escape. */
+  private drainInbox(agent: AgentRecord, live: Live): Promise<void> {
+    if (live.drainPromise) return live.drainPromise
+    const p = this.doDrain(agent).finally(() => {
+      live.drainPromise = null
+    })
+    live.drainPromise = p
+    return p
+  }
+
+  private async doDrain(agent: AgentRecord): Promise<void> {
+    try {
+      const { plans, rejected } = await this.deps.inbox.drain(agent.id)
+      if (rejected > 0) console.warn(`[agents] discarded ${rejected} invalid plan file(s) from ${agent.name}`)
+      for (const plan of plans) {
+        try {
+          this.deps.onPlan?.(agent.id, plan)
+        } catch (err) {
+          console.error('[agents] plan handling failed', err)
+        }
+      }
+    } catch (err) {
+      console.error('[agents] could not read the plan inbox', err)
+    }
+  }
+
   private flush(agentId: string, live: Live): void {
     if (live.flushTimer) clearTimeout(live.flushTimer)
     live.flushTimer = null
@@ -375,11 +415,17 @@ export class AgentService {
     }
     if (live.flushTimer) clearTimeout(live.flushTimer)
     if (live.killTimer) clearTimeout(live.killTimer)
+    if (live.inboxTimer) clearInterval(live.inboxTimer)
+    // A plan submitted just before exit must be recorded before the task is returned to Ready. A drain
+    // already in flight may have listed the directory before the file landed, so wait for it and drain again.
+    await this.drainInbox(agent, live)
+    await this.drainInbox(agent, live)
     step('flush', () => this.flush(agent.id, live))
     await this.saveLog(agent.id, live.buffer)
     const status = live.interrupted ? 'interrupted' : live.stopRequested ? 'stopped' : e.exitCode === 0 ? 'exited' : 'failed'
     step('record exit', () => void this.deps.agents.finish(agent.id, status, e.exitCode, live.title))
-    // No plan is captured yet (Phase 5), so the task goes back to Ready whenever its agent ends.
+    // If the agent ended without a plan the task goes back to Ready; if one was captured the task is
+    // already awaiting approval and stays there.
     step('return task', () => this.returnTaskToReady(agent.projectId, agent.taskId))
     step('announce', () => this.changed(agent.projectId, agent.id))
     this.deps.hub.clear(agent.id)

@@ -18,6 +18,12 @@ import { createNodePtyFactory } from './modules/agents/developers/pty-node'
 import { TerminalHub } from './modules/agents/developers/terminal-hub'
 import { GitWorktrees } from './modules/agents/developers/worktrees'
 import { registerAgentHandlers } from './ipc/agents'
+import { registerPlanHandlers } from './ipc/plans'
+import { PlanInbox } from './modules/agents/developers/plan-inbox'
+import { ApprovalService } from './modules/orchestration/approval-service'
+import { PlanRepository } from './modules/orchestration/plan-repository'
+import { PlanService } from './modules/orchestration/plan-service'
+import { ReviewService } from './modules/orchestration/review-service'
 import { setTrustedAppEntry } from './ipc/handle'
 import { registerProjectHandlers } from './ipc/projects'
 import { registerTaskHandlers } from './ipc/tasks'
@@ -52,7 +58,17 @@ async function bootstrap(): Promise<void> {
   }
   const taskRepo = new TaskRepository(dbHandle.db)
   // Stopping an agent when the user cancels or blocks its task: the service is created just below.
-  const taskService = new TaskService({ projects: projectRepo, tasks: taskRepo, emit, onLeaveActive: (taskId) => agentService?.onTaskLeft(taskId) })
+  let approvalsRef: { onTaskLeft(taskId: string): void } | undefined
+  const taskService = new TaskService({
+    projects: projectRepo,
+    tasks: taskRepo,
+    emit,
+    // The user moved a task out of active work: stop its agent and drop any standing approval.
+    onLeaveActive: (taskId) => {
+      agentService?.onTaskLeft(taskId)
+      approvalsRef?.onTaskLeft(taskId)
+    }
+  })
   const proposalService = new ProposalService({
     db: dbHandle.db,
     projects: projectRepo,
@@ -71,6 +87,31 @@ async function bootstrap(): Promise<void> {
       propose: (input) => proposalService.record(projectId, input)
     })
   }))
+  // Plans, the Team Lead's advice on them, and the user's approvals (the execution gate).
+  const planRepo = new PlanRepository(dbHandle.db)
+  const agentRepo = new AgentRepository(dbHandle.db)
+  let reviews: ReviewService | undefined
+  const planService = new PlanService({
+    agents: agentRepo,
+    taskRepo,
+    tasks: taskService,
+    plans: planRepo,
+    emit,
+    // A captured plan is sent to the Team Lead for advice. This never approves anything.
+    onPlanSubmitted: (plan) => reviews?.reviewAutomatically(plan)
+  })
+  reviews = new ReviewService({ projects: projectRepo, taskRepo, plans: planRepo, teamLead, emit })
+  const approvals = new ApprovalService({
+    db: dbHandle.db,
+    projects: projectRepo,
+    taskRepo,
+    tasks: taskService,
+    agents: agentRepo,
+    plans: planRepo,
+    emit,
+    reviewInProgress: (planId) => reviews?.isInProgress(planId) ?? false
+  })
+  approvalsRef = approvals
   const onboarding = new OnboardingService({ projects: projectRepo, teamLead, discover: discoverProject, emit })
   onboarding.recoverInterrupted()
 
@@ -88,12 +129,16 @@ async function bootstrap(): Promise<void> {
     projects: projectRepo,
     taskRepo,
     tasks: taskService,
-    agents: new AgentRepository(dbHandle.db),
+    agents: agentRepo,
     worktrees: new GitWorktrees(),
     pty: createNodePtyFactory(),
     hub,
     resolveClaude: () => resolveClaudeBinary({ env: process.env, home: homedir() }),
     reaper: createProcessReaper(),
+    inbox: new PlanInbox(join(app.getPath('userData'), 'plan-inbox')),
+    // Claude Code starts this script (Electron run as plain Node) to give the agent its submit_plan tool.
+    planServer: { command: process.execPath, scriptPath: join(__dirname, 'plan-server.js') },
+    onPlan: (agentId, plan) => void planService.ingest(agentId, plan),
     env: () => process.env,
     worktreeRoot: join(app.getPath('userData'), 'worktrees'),
     logDir: join(app.getPath('userData'), 'terminal-logs'),
@@ -102,6 +147,7 @@ async function bootstrap(): Promise<void> {
   await agents.recoverInterrupted()
 
   registerAgentHandlers({ agents })
+  registerPlanHandlers({ approvals, reviews })
   registerTaskHandlers({ tasks: taskService, proposals: proposalService, activity: new ActivityRepository(dbHandle.db), projects: projectService })
   registerProjectHandlers({
     projects: projectService,

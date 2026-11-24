@@ -8,7 +8,7 @@ Each phase must leave the app runnable. Do not start a phase without explicit au
 | 2 | Project workspace, onboarding, Team Lead chat | **Complete** (merged into `main`) (verification caveats below) | Project page, onboarding lifecycle, discovery of CLAUDE.md and `.claude/`, Team Lead via Claude Agent SDK, session persistence and resume, streaming chat |
 | 3 | Tasks and orchestration | **Complete** (commit `7806cd5`; caveats below) | Task model, backlog UI, dependencies, validated state machine, Team Lead task tools (propose, user approves), persistent event history |
 | 4 | Developer agent runtime | **Implemented** (uncommitted; caveats below) | Claude Code CLI in node-pty, git worktrees, xterm.js terminals, agent persistence |
-| 5 | Planning and approval | Not started | Plan capture and versioning, Team Lead review, backend-enforced approval gate |
+| 5 | Planning and approval | **Implemented** (uncommitted; caveats below) | Plan capture and versioning, Team Lead review (advice), user approval records, backend-enforced execution gate |
 | 6 | Execution and review | Not started | Approved execution, result and test capture, Team Lead review, completion rules |
 | 7 | Reliability and polish | Not started | Crash recovery, process cleanup, logging, tests, packaging |
 
@@ -32,5 +32,12 @@ Findings that shaped the design: deny rules hold even after cycling out of plan 
 
 Not verified: real keyboard typing in the xterm UI (input was tested through the IPC write path); how the Agents tab looks; macOS only; very large or long-running output; resuming an agent's session (the session id is recorded for Phase 5/6); plan capture and the approval gate (Phase 5).
 
-## Open items for Phase 5 and later
-Plan capture (a documented hook or the session transcript) and the real approval record behind `approvalVerified`; execution launch (`--resume` with the recorded session id and wider permissions); `repoPath` re-validation before each agent start; decide how to treat the `!` shell-mode gap; packaging the SDK and `node-pty` native binaries (Phase 7).
+## Phase 5 acceptance
+Verified with 270 automated tests, a read-only security review (no forging path found; its findings fixed or recorded in `SECURITY.md`), and a real run in the built app with the real agent and the real Team Lead: the agent investigated and submitted a structured plan through the real MCP tool (steps, files, tests, risks); it was stored as version 1 and the task moved to `awaiting_approval`; the Team Lead reviewed it automatically (advice recorded, no approval created, gate still closed); a made-up plan id and a wrong project were refused; my approval created a record with the right agent, version and hash and opened the gate; approving twice was refused; revoking closed it; the audit trail recorded submission, review, approval and invalidation; the renderer has no channel to authorize execution; a second review used a one-shot session that left the chat session id and the saved session files unchanged.
+
+Findings that shaped the design: in this CLI version `ExitPlanMode` carries no plan text in its hook input, so Orbyte provides its own `submit_plan` tool; plan mode asks permission for MCP tools unless they are declared read-only, and Orbyte must not answer prompts for you; Orbyte cannot see the plan unless the agent calls the tool.
+
+Not verified: a real reject-then-revise loop with a live agent (covered by tests with fake processes); how the plan dialog looks (checked that it renders the expected text); behavior when the Team Lead is busy for a long time (covered by a test with a stub); packaging of the plan server; approval integrity against a local process running as you (open design question, see `SECURITY.md`). Execution is not built: the gate can authorize it and nothing launches it.
+
+## Open items for Phase 6 and later
+Execution launch (`--resume` with the recorded session id and wider permissions) through `authorizeExecution`; result and test capture; Team Lead implementation review; deciding whether approval rows need signing; `repoPath` re-validation before each agent start; decide how to treat the `!` shell-mode gap; packaging the SDK and `node-pty` native binaries (Phase 7).
