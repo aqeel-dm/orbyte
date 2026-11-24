@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useTasks } from '@/hooks/use-tasks'
 import { PRIORITY_LABEL, STATUS_LABEL, STATUS_ORDER, moveLabel } from './labels'
+import { ResultDialog } from '@/features/executions/result-dialog'
 import { PlanDialog } from '@/features/plans/plan-dialog'
 import { ProposalCard } from './proposal-card'
 import { TaskDialog } from './task-dialog'
@@ -17,6 +18,8 @@ export function TasksTab({ projectId, archived, onAgentStarted }: { projectId: s
   const [actionError, setActionError] = useState<string | null>(null)
   const [showClosed, setShowClosed] = useState(false)
   const [planTaskId, setPlanTaskId] = useState<string | null>(null)
+  const [resultTaskId, setResultTaskId] = useState<string | null>(null)
+  const resultTask = tasks.find((t) => t.id === resultTaskId) ?? null
   const planTask = tasks.find((t) => t.id === planTaskId) ?? null
   const titleOf = (id: string) => tasks.find((t) => t.id === id)?.title ?? 'a removed task'
 
@@ -70,6 +73,7 @@ export function TasksTab({ projectId, archived, onAgentStarted }: { projectId: s
                     <div className="flex shrink-0 flex-wrap justify-end gap-1">
                       {!archived && (isOpen(t.status) || CONTENT_EDITABLE.includes(t.status)) && <Button size="sm" variant="ghost" onClick={() => setDialog({ task: t })}>Edit</Button>}
                       {t.implementationPlan !== null && <Button size="sm" variant="outline" onClick={() => setPlanTaskId(t.id)}>Plan</Button>}
+                      {(t.status === 'in_progress' || t.status === 'in_review' || t.status === 'completed') && t.executionStatus !== 'idle' && <Button size="sm" variant={t.status === 'in_review' ? 'default' : 'outline'} onClick={() => setResultTaskId(t.id)}>{t.status === 'in_review' ? 'Review result' : 'Result'}</Button>}
                       {!archived && t.status === 'ready' && <Button size="sm" onClick={() => startAgent(t)}>Start agent</Button>}
                       {!archived && userTransitionsFrom(t.status).map((to) => <Button key={to} size="sm" variant="outline" onClick={() => move(t, to)}>{moveLabel(t.status, to)}</Button>)}
                     </div>
@@ -83,6 +87,7 @@ export function TasksTab({ projectId, archived, onAgentStarted }: { projectId: s
       {closedCount > 0 && <Button variant="ghost" size="sm" onClick={() => setShowClosed((v) => !v)}>{showClosed ? 'Hide' : 'Show'} closed tasks ({closedCount})</Button>}
 
       {planTask && <PlanDialog key={planTask.id} projectId={projectId} task={planTask} open onOpenChange={(o) => { if (!o) setPlanTaskId(null) }} />}
+      {resultTask && <ResultDialog key={resultTask.id} projectId={projectId} task={resultTask} open onOpenChange={(o) => { if (!o) setResultTaskId(null) }} />}
       {dialog && <TaskDialog key={dialog.task?.id ?? 'new'} projectId={projectId} task={dialog.task} others={tasks} open onOpenChange={(o) => { if (!o) setDialog(null) }} />}
     </div>
   )

@@ -8,8 +8,4 @@ export function canonicalPlan(c: SubmittedPlan): string {
 
 export const planHash = (c: SubmittedPlan): string => createHash('sha256').update(canonicalPlan(c)).digest('hex')
 
-/** Plain-text rendering, kept on the task for quick reference. */
-export function renderPlan(c: SubmittedPlan): string {
-  const list = (title: string, items: string[]): string => (items.length ? `\n\n${title}:\n${items.map((i) => `- ${i}`).join('\n')}` : '')
-  return `Summary: ${c.summary}\n\nSteps:\n${c.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}${list('Files', c.files)}${list('Tests', c.tests)}${list('Risks', c.risks)}`
-}
+export { renderPlan } from '@shared/plan-text'

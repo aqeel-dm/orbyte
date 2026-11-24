@@ -46,7 +46,8 @@ describe('task state machine', () => {
     expect(checkTransition('ready', 'planning', 'orchestrator').ok).toBe(true)
     expect(checkTransition('planning', 'awaiting_approval', 'orchestrator').ok).toBe(true)
     expect(checkTransition('in_progress', 'in_review', 'orchestrator').ok).toBe(true)
-    expect(checkTransition('in_review', 'completed', 'orchestrator').ok).toBe(true)
+    expect(checkTransition('in_review', 'completed', 'orchestrator').ok).toBe(false) // completion needs the completion gate
+    expect(checkTransition('in_review', 'completed', 'orchestrator', { completionVerified: true }).ok).toBe(true)
   })
 
   it('userTransitionsFrom lists only what the UI may offer', () => {

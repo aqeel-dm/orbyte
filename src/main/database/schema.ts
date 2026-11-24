@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import type { OnboardingData } from '@shared/schemas/onboarding'
+import type { Evidence, ReportedTest } from '@shared/schemas/execution'
 import type { SubmittedPlan } from '@shared/schemas/plan'
 import type { ProposalItem } from '@shared/schemas/task'
 
@@ -124,6 +125,8 @@ export const developerAgents = sqliteTable(
       .notNull()
       .references(() => tasks.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
+    /** planning: investigates and submits a plan. execution: implements the approved plan in the same worktree. */
+    kind: text('kind', { enum: ['planning', 'execution'] }).notNull().default('planning'),
     status: text('status', { enum: ['starting', 'running', 'exited', 'failed', 'stopped', 'interrupted'] }).notNull(),
     pid: integer('pid'),
     /** The Claude Code session id Orbyte chose with --session-id (for resuming later). Never sent to the renderer. */
@@ -202,5 +205,98 @@ export const planApprovals = sqliteTable(
     index('approvals_task_idx').on(t.taskId),
     // At most one VALID approval per task, enforced by the database as well as the service.
     uniqueIndex('approvals_one_valid_per_task').on(t.taskId).where(sql`${t.status} = 'approved' and ${t.invalidatedAt} is null`)
+  ]
+)
+
+export const executions = sqliteTable(
+  'executions',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    taskId: text('task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+    agentId: text('agent_id').notNull().references(() => developerAgents.id, { onDelete: 'cascade' }),
+    planId: text('plan_id').notNull().references(() => taskPlans.id, { onDelete: 'cascade' }),
+    planVersion: integer('plan_version').notNull(),
+    planHash: text('plan_hash').notNull(),
+    /** The approval that authorized this run; null for a revision run authorized by a recorded change request. */
+    approvalId: text('approval_id'),
+    status: text('status', { enum: ['running', 'result_submitted', 'ended_without_result', 'stopped', 'failed'] }).notNull().default('running'),
+    feedback: text('feedback'),
+    startedAt: integer('started_at').notNull().default(now),
+    endedAt: integer('ended_at')
+  },
+  (t) => [index('executions_task_idx').on(t.taskId, t.status), uniqueIndex('executions_agent_unique').on(t.agentId)]
+)
+
+/** Notes the agent reported while working. Self-reported and unverified. */
+export const executionProgress = sqliteTable(
+  'execution_progress',
+  {
+    id: text('id').primaryKey(),
+    executionId: text('execution_id').notNull().references(() => executions.id, { onDelete: 'cascade' }),
+    message: text('message').notNull(),
+    createdAt: integer('created_at').notNull().default(now)
+  },
+  (t) => [index('progress_execution_idx').on(t.executionId, t.createdAt)]
+)
+
+export const executionResults = sqliteTable(
+  'execution_results',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    taskId: text('task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+    executionId: text('execution_id').notNull().references(() => executions.id, { onDelete: 'cascade' }),
+    agentId: text('agent_id').notNull().references(() => developerAgents.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    /** The agent's own summary and test report: claims, not evidence. */
+    summary: text('summary').notNull(),
+    tests: text('tests', { mode: 'json' }).$type<ReportedTest[]>().notNull().default([]),
+    /** Facts Orbyte collected from git itself at the moment the result arrived. */
+    evidence: text('evidence', { mode: 'json' }).$type<Evidence>().notNull(),
+    snapshotHash: text('snapshot_hash').notNull(),
+    status: text('status', { enum: ['current', 'superseded'] }).notNull().default('current'),
+    submittedAt: integer('submitted_at').notNull().default(now)
+  },
+  (t) => [uniqueIndex('results_task_version').on(t.taskId, t.version), index('results_task_status_idx').on(t.taskId, t.status)]
+)
+
+export const resultReviews = sqliteTable(
+  'result_reviews',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    taskId: text('task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+    resultId: text('result_id').notNull().references(() => executionResults.id, { onDelete: 'cascade' }),
+    resultVersion: integer('result_version').notNull(),
+    reviewer: text('reviewer', { enum: ['team_lead'] }).notNull(),
+    recommendation: text('recommendation', { enum: ['approve', 'revise', 'reject'] }).notNull(),
+    summary: text('summary').notNull(),
+    concerns: text('concerns', { mode: 'json' }).$type<string[]>().notNull().default([]),
+    createdAt: integer('created_at').notNull().default(now)
+  },
+  (t) => [index('result_reviews_result_idx').on(t.resultId)]
+)
+
+export const resultDecisions = sqliteTable(
+  'result_decisions',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    taskId: text('task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+    resultId: text('result_id').notNull().references(() => executionResults.id, { onDelete: 'cascade' }),
+    resultVersion: integer('result_version').notNull(),
+    snapshotHash: text('snapshot_hash').notNull(),
+    reviewer: text('reviewer', { enum: ['user'] }).notNull(),
+    decision: text('decision', { enum: ['accepted', 'changes_requested'] }).notNull(),
+    feedback: text('feedback').notNull().default(''),
+    decidedAt: integer('decided_at').notNull().default(now),
+    invalidatedAt: integer('invalidated_at'),
+    invalidationReason: text('invalidation_reason')
+  },
+  (t) => [
+    index('decisions_task_idx').on(t.taskId),
+    // At most one VALID acceptance per task, enforced by the database as well as the service.
+    uniqueIndex('decisions_one_valid_acceptance').on(t.taskId).where(sql`${t.decision} = 'accepted' and ${t.invalidatedAt} is null`)
   ]
 )

@@ -14,6 +14,8 @@ export interface TeamLeadRunRequest {
   reviewTools?: TeamLeadReviewTools | null
   /** A one-shot session that is not saved, so nothing from it can carry into the user's chat. */
   ephemeral?: boolean
+  /** One extra directory the read-only tools may read: the agent's worktree, for a result review. */
+  readDir?: string
   abortController: AbortController
   maxTurns?: number
 }
@@ -47,6 +49,7 @@ export function buildTeamLeadOptions(req: TeamLeadRunRequest): Options {
     env: { ...process.env },
     abortController: req.abortController,
     ...(req.ephemeral ? { persistSession: false } : {}),
+    ...(req.readDir ? { additionalDirectories: [req.readDir] } : {}),
     ...(req.maxTurns !== undefined ? { maxTurns: req.maxTurns } : {}),
     ...(req.resumeSessionId ? { resume: req.resumeSessionId } : {})
   }

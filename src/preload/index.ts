@@ -50,6 +50,13 @@ const api: OrbyteApi = {
     resize: (projectId, agentId, cols, rows) => ipcRenderer.invoke(IPC.agents.resize, { projectId, agentId, cols, rows }),
     summary: () => ipcRenderer.invoke(IPC.agents.summary)
   },
+  executions: {
+    start: (projectId, taskId) => ipcRenderer.invoke(IPC.executions.start, { projectId, taskId }),
+    get: (projectId, taskId) => ipcRenderer.invoke(IPC.executions.get, { projectId, taskId }),
+    accept: (projectId, taskId, resultId) => ipcRenderer.invoke(IPC.executions.accept, { projectId, taskId, resultId }),
+    requestChanges: (projectId, taskId, resultId, feedback) => ipcRenderer.invoke(IPC.executions.requestChanges, { projectId, taskId, resultId, feedback }),
+    requestReview: (projectId, taskId, resultId) => ipcRenderer.invoke(IPC.executions.requestReview, { projectId, taskId, resultId })
+  },
   plans: {
     get: (projectId, taskId) => ipcRenderer.invoke(IPC.plans.get, { projectId, taskId }),
     approve: (projectId, taskId, planId) => ipcRenderer.invoke(IPC.plans.approve, { projectId, taskId, planId }),

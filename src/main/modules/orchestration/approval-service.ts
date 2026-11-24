@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { AppError } from '@shared/types/result'
 import type { GateState, PlanApproval, PlanBundle, TaskPlan } from '@shared/schemas/plan'
+import type { ResultDecision } from '@shared/schemas/execution'
 import type { AppEvent } from '@shared/schemas/team-lead'
 import type { Task } from '@shared/schemas/task'
 import type { Db } from '../../database/client'
@@ -9,6 +10,7 @@ import type { AgentRepository } from '../agents/developers/agent-repository'
 import type { ProjectRepository } from '../projects/repository'
 import type { TaskRepository } from '../tasks/repository'
 import type { TaskService } from '../tasks/service'
+import type { ExecutionRepository } from './execution-repository'
 import { planHash } from './plan-hash'
 import type { PlanRepository } from './plan-repository'
 
@@ -31,6 +33,8 @@ export class ApprovalService {
       tasks: Pick<TaskService, 'transitionSystem'>
       agents: Pick<AgentRepository, 'activeForTask' | 'get'>
       plans: PlanRepository
+      /** For revision runs, which are authorized by the user's recorded change request. */
+      results: Pick<ExecutionRepository, 'latestResult' | 'validChangeRequest' | 'consumeChangeRequest' | 'runInTransaction'>
       emit: (event: AppEvent) => void
       reviewInProgress?: (planId: string) => boolean
     }
@@ -157,6 +161,32 @@ export class ApprovalService {
     }).run()
     this.changed(projectId, taskId)
     return verdict.approval
+  }
+
+  /**
+   * Moves a task from review back into execution, but only on the user's recorded, unused request for
+   * changes to the CURRENT result. The request is spent first (one request authorizes one revision run).
+   * Like `authorizeExecution`, this is gated here so `approvalVerified: true` stays in one file.
+   */
+  authorizeRevision(projectId: string, taskId: string): ResultDecision {
+    const project = this.deps.projects.get(projectId)
+    const task = this.deps.taskRepo.get(taskId)
+    if (!project || !task || task.projectId !== projectId) throw new AppError('EXECUTION_NOT_AUTHORIZED', 'Task not found.')
+    if (project.status === 'archived') throw new AppError('EXECUTION_NOT_AUTHORIZED', 'The project is archived.')
+    if (task.status !== 'in_review') throw new AppError('EXECUTION_NOT_AUTHORIZED', 'The task is not in review.')
+    const latest = this.deps.results.latestResult(taskId)
+    const request = this.deps.results.validChangeRequest(taskId)
+    if (!latest || !request || request.resultId !== latest.id || request.reviewer !== 'user') {
+      throw new AppError('EXECUTION_NOT_AUTHORIZED', 'There is no unused change request for the current result.')
+    }
+    const spent = this.deps.results.runInTransaction((tx) => this.deps.results.consumeChangeRequest(request.id, 'Consumed by a revision run', tx))
+    if (!spent) throw new AppError('EXECUTION_NOT_AUTHORIZED', 'This change request was already used.')
+    this.deps.tasks.transitionSystem(projectId, taskId, 'in_progress', { approvalVerified: true })
+    this.deps.db.insert(activityEvents).values({
+      id: randomUUID(), projectId, type: 'execution.revision_authorized', payload: { taskId, decisionId: request.id, resultVersion: latest.version }
+    }).run()
+    this.changed(projectId, taskId)
+    return request
   }
 
   /**

@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { PlanInbox } from '../src/main/modules/agents/developers/plan-inbox'
+import { AgentInbox } from '../src/main/modules/agents/developers/agent-inbox'
 import { MAX_PLAN_VERSIONS } from '../src/main/modules/orchestration/plan-service'
 import { AppError } from '../src/shared/types/result'
 import { approvePlanInputSchema, rejectPlanInputSchema } from '../src/shared/schemas/plan'
@@ -296,7 +296,7 @@ describe('review findings: capture, caps and one-shot approvals', () => {
 
   it('a plan submitted while a poll is mid-read is still captured when the agent exits', async () => {
     // The first drain lists the (empty) directory, then stalls: the plan lands and the agent exits meanwhile.
-    class SlowInbox extends PlanInbox {
+    class SlowInbox extends AgentInbox {
       first = true
       async drain(agentId: string) {
         if (this.first) { this.first = false; const r = await super.drain(agentId); await new Promise((res) => setTimeout(res, 300)); return r }

@@ -66,7 +66,8 @@ Source is the reference; if this document disagrees with the code, fix the docum
 2. `AgentService` polls that inbox every second while the agent runs, and again (waiting for any read in flight) when the agent exits, and hands each plan to `PlanService.ingest`. A valid plan for a task in `planning` becomes the next numbered version (hashed); any earlier version is superseded and any standing approval is invalidated in the same transaction. The task moves to `awaiting_approval`. An identical resubmission while a decision is pending is ignored.
 3. `ReviewService` asks the Team Lead to review the plan automatically (one-shot session, review tool only, waits if the Team Lead is busy, skipped if the plan was replaced). The result is stored as advice.
 4. You read the plan, the advice and the gate's blockers in the plan dialog and approve or reject the CURRENT version. Approval stores the record (task, agent, version, hash, reviewer `user`, status, time). Rejection returns the task to planning (agent alive) or Ready (no live agent).
-5. `ApprovalService.verify` is the gate. `authorizeExecution` (backend only, not wired to the UI; Phase 6 will call it) re-verifies, spends the approval, and moves the task to `in_progress` with `approvalVerified: true`, the only place that flag is passed.
+5. `ApprovalService.verify` is the gate. `authorizeExecution` (called only by `ExecutionService.start`, itself reached from `executions:start`) re-verifies, spends the approval, and moves the task to `in_progress` with `approvalVerified: true`, the only place that flag is passed.
+6. **Execution and review (Phase 6).** `ExecutionService` launches an execution agent (a fresh `claude` in the plan's worktree, `--permission-mode acceptEdits`, tools `Read,Glob,Grep,Edit,Write,Bash`, only Orbyte's MCP server with `report_progress` and `submit_result`). Reports are claims. On `submit_result`, Orbyte collects its own evidence from git (`GitWorktrees.snapshot`: HEAD, diff hash, untracked file digests, files, commits), stores a numbered result, moves the task to `in_review` and stops the agent so the code is frozen. `ResultReviewService` asks the Team Lead (fresh unsaved session, read access to the worktree) for advice. `CompletionService.accept` is the user's decision and the only place that passes `completionVerified: true`: it needs the current result, a Team Lead review of that result, and a fresh snapshot equal to the stored one. "Request changes" records a single-use change request that `authorizeRevision` (in `approval-service.ts`) spends to start a revision run. An execution that ends without a result returns the task to `awaiting_approval` and needs a fresh approval.
 
 **Decisions:** the Team Lead advises and you decide; an approval is tied to one plan version and hash and is one-shot; the gate re-checks stored state each time; task approval columns are a cache for the UI, never used for decisions.
 
@@ -76,11 +77,10 @@ Source is the reference; if this document disagrees with the code, fix the docum
 ## Filesystem and git boundaries
 - **Implemented:** filesystem access by Orbyte itself is `realpath`/`stat` on the user-picked directory, bounded read-only discovery inside it, and the SQLite file under `app.getPath('userData')`. The Team Lead's SDK subprocess separately reads files in the project directory through its read-only tools.
 - **Implemented:** git is read-only (`rev-parse`, `symbolic-ref`), with a 10-second timeout and no shell. Orbyte never runs `git init` or changes repo config.
-- **Planned (Phase 4):** git branches and worktrees for developer isolation. Nothing creates a worktree today.
 - **Limitation:** non-git directories can be registered; worktree isolation will not apply to them.
 
 ## Planned, not built
-Execution (launching an approved execution), result capture and Team Lead implementation review (Phase 6) (Phase 5), execution and review (Phase 6), recovery and packaging (Phase 7). See `ROADMAP.md`. Integrations (Jira, Linear, GitHub Issues) must sit behind an adapter interface so the task model stays provider-neutral.
+Recovery, logging, and packaging (Phase 7). See `ROADMAP.md`. Integrations (Jira, Linear, GitHub Issues) must sit behind an adapter interface so the task model stays provider-neutral.
 
 ## Decisions
 - Electron main as backend, typed IPC, no HTTP server.

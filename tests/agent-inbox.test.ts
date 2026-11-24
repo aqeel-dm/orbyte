@@ -1,15 +1,15 @@
 import { chmodSync, existsSync, mkdirSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { PlanInbox } from '../src/main/modules/agents/developers/plan-inbox'
+import { AgentInbox } from '../src/main/modules/agents/developers/agent-inbox'
 import { tempDir } from './helpers'
 
 const AGENT = '11111111-1111-4111-8111-111111111111'
 const plan = (over = {}) => ({ plan: { summary: 'S', steps: ['one'], files: [], tests: [], risks: [], ...over } })
 
-describe('PlanInbox', () => {
+describe('AgentInbox', () => {
   async function setup() {
-    const inbox = new PlanInbox(tempDir('orbyte-inbox-'))
+    const inbox = new AgentInbox(tempDir('orbyte-inbox-'))
     const dir = await inbox.prepare(AGENT)
     return { inbox, dir }
   }
@@ -53,24 +53,24 @@ describe('PlanInbox', () => {
     const { inbox, dir } = await setup()
     writeFileSync(join(dir, '.plan-1.json.tmp'), JSON.stringify(plan()))
     writeFileSync(join(dir, 'notes.txt'), 'hi')
-    expect(await inbox.drain(AGENT)).toEqual({ plans: [], rejected: 0 })
+    expect(await inbox.drain(AGENT)).toEqual({ plans: [], progress: [], results: [], rejected: 0 })
     expect(existsSync(join(dir, 'notes.txt'))).toBe(true)
   })
 
   it('refuses ids that could escape the inbox root', () => {
-    const inbox = new PlanInbox('/root')
+    const inbox = new AgentInbox('/root')
     for (const bad of ['../x', '..', 'a/b', '', '11111111-1111-4111-8111-11111111111g/..']) expect(() => inbox.dirFor(bad), bad).toThrow()
   })
 
   it('an empty or missing inbox is not an error', async () => {
-    const inbox = new PlanInbox(tempDir('orbyte-inbox-'))
-    expect(await inbox.drain(AGENT)).toEqual({ plans: [], rejected: 0 })
+    const inbox = new AgentInbox(tempDir('orbyte-inbox-'))
+    expect(await inbox.drain(AGENT)).toEqual({ plans: [], progress: [], results: [], rejected: 0 })
   })
 })
 
-describe('PlanInbox cleanup', () => {
+describe('AgentInbox cleanup', () => {
   it('removes an agent\'s directory and its contents, and tolerates one that is already gone', async () => {
-    const inbox = new PlanInbox(tempDir('orbyte-inbox-'))
+    const inbox = new AgentInbox(tempDir('orbyte-inbox-'))
     const dir = await inbox.prepare(AGENT)
     writeFileSync(join(dir, 'plan-1-a.json'), '{}')
     await inbox.remove(AGENT)
@@ -80,9 +80,9 @@ describe('PlanInbox cleanup', () => {
 })
 
 
-describe('PlanInbox limits and permissions', () => {
+describe('AgentInbox limits and permissions', () => {
   it('processes at most 10 files per drain and discards the rest', async () => {
-    const inbox = new PlanInbox(tempDir('orbyte-inbox-'))
+    const inbox = new AgentInbox(tempDir('orbyte-inbox-'))
     const dir = await inbox.prepare(AGENT)
     for (let i = 0; i < 15; i++) writeFileSync(join(dir, `plan-${String(i).padStart(3, '0')}-a.json`), JSON.stringify(plan({ summary: `p${i}` })))
     const { plans, rejected } = await inbox.drain(AGENT)
@@ -96,7 +96,7 @@ describe('PlanInbox limits and permissions', () => {
     const root = tempDir('orbyte-inbox-')
     mkdirSync(join(root, AGENT), { mode: 0o755 })
     chmodSync(join(root, AGENT), 0o755)
-    const inbox = new PlanInbox(root)
+    const inbox = new AgentInbox(root)
     await inbox.prepare(AGENT)
     expect(statSync(join(root, AGENT)).mode & 0o777).toBe(0o700)
   })

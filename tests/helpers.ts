@@ -81,7 +81,8 @@ import { AgentRepository } from '../src/main/modules/agents/developers/agent-rep
 import { AgentService, type PtyFactory, type PtyProcess } from '../src/main/modules/agents/developers/agent-service'
 import { TerminalHub } from '../src/main/modules/agents/developers/terminal-hub'
 import { GitWorktrees } from '../src/main/modules/agents/developers/worktrees'
-import { PlanInbox } from '../src/main/modules/agents/developers/plan-inbox'
+import { AgentInbox } from '../src/main/modules/agents/developers/agent-inbox'
+import { ExecutionRepository } from '../src/main/modules/orchestration/execution-repository'
 import { ApprovalService } from '../src/main/modules/orchestration/approval-service'
 import { PlanRepository } from '../src/main/modules/orchestration/plan-repository'
 import { PlanService } from '../src/main/modules/orchestration/plan-service'
@@ -118,7 +119,7 @@ export class FakePtyFactory implements PtyFactory {
 }
 
 /** Real DB, real temp git repo and worktrees, fake processes. */
-export function makeAgentStack(opts: { commit?: boolean; trust?: 'unset' | 'trusted' | 'untrusted'; git?: boolean; maxActive?: number; claude?: string | null; env?: NodeJS.ProcessEnv; killGraceMs?: number; inbox?: PlanInbox } = {}) {
+export function makeAgentStack(opts: { commit?: boolean; trust?: 'unset' | 'trusted' | 'untrusted'; git?: boolean; maxActive?: number; claude?: string | null; env?: NodeJS.ProcessEnv; killGraceMs?: number; inbox?: AgentInbox } = {}) {
   const t = makeTaskStack()
   const repoPath = makeGitRepo(opts.commit ?? true)
   const project = t.addProject({ repoPath, defaultBranch: 'main', isGitRepo: opts.git ?? true }, opts.trust ?? 'trusted')
@@ -127,7 +128,7 @@ export function makeAgentStack(opts: { commit?: boolean; trust?: 'unset' | 'trus
   const hub = new TerminalHub((windowId, e) => sent.push({ windowId, agentId: e.agentId, data: e.data }))
   const worktreeRoot = tempDir('orbyte-wt-'); const logDir = tempDir('orbyte-logs-')
   const agentRepo = new AgentRepository(t.handle.db)
-  const inbox = opts.inbox ?? new PlanInbox(tempDir('orbyte-inbox-'))
+  const inbox = opts.inbox ?? new AgentInbox(tempDir('orbyte-inbox-'))
   const planRepo = new PlanRepository(t.handle.db)
   const submitted: TaskPlan[] = []
   let service!: AgentService
@@ -138,14 +139,14 @@ export function makeAgentStack(opts: { commit?: boolean; trust?: 'unset' | 'trus
     onPlanSubmitted: (plan) => { submitted.push(plan) }
   })
   const approvals = new ApprovalService({
-    db: t.handle.db, projects: t.projects, taskRepo: t.taskRepo, tasks, agents: agentRepo, plans: planRepo, emit: (e) => t.events.push(e)
+    db: t.handle.db, projects: t.projects, taskRepo: t.taskRepo, tasks, agents: agentRepo, plans: planRepo, results: new ExecutionRepository(t.handle.db), emit: (e) => t.events.push(e)
   })
   approvalsRef = approvals
   const make = (extra: Partial<ConstructorParameters<typeof AgentService>[0]> = {}) => new AgentService({
     projects: t.projects, taskRepo: t.taskRepo, tasks, agents: agentRepo, worktrees: new GitWorktrees(), pty, hub,
     resolveClaude: () => (opts.claude === undefined ? '/fake/bin/claude' : opts.claude),
     env: () => opts.env ?? { PATH: '/usr/bin', HOME: '/home/u' },
-    inbox, planServer: { command: '/fake/electron', scriptPath: '/fake/plan-server.js' }, onPlan: (id, plan) => void planService.ingest(id, plan),
+    inbox, agentServer: { command: '/fake/electron', scriptPath: '/fake/agent-server.js' }, onPlan: (id, plan) => void planService.ingest(id, plan),
     worktreeRoot, logDir, emit: (e) => t.events.push(e), flushMs: 5, killGraceMs: opts.killGraceMs ?? 30,
     ...(opts.maxActive !== undefined ? { maxActive: opts.maxActive } : {}),
     ...extra

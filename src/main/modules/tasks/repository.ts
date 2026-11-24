@@ -115,6 +115,13 @@ export class TaskRepository {
     })
   }
 
+  /** The orchestrator's record of execution, kept in step with the execution records. Never set from an agent's claim. */
+  setExecutionState(taskId: string, patch: { executionStatus?: Task['executionStatus']; resultSummary?: string | null }, tx?: DbOrTx): void {
+    this.inTx(tx, (t) => {
+      t.update(tasks).set({ ...patch, updatedAt: Date.now() }).where(eq(tasks.id, taskId)).run()
+    })
+  }
+
   /** Counts by status across projects that are not archived. */
   summary(): { open: number; byStatus: Record<string, number> } {
     const rows = this.db

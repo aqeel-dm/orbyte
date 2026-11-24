@@ -16,6 +16,8 @@ export interface NewAgent {
   branch: string
   baseBranch: string
   baseCommit: string
+  /** Defaults to planning. */
+  kind?: 'planning' | 'execution'
 }
 
 /** Internal view: includes values the renderer must not see (session id, base commit, pid). */
@@ -31,6 +33,7 @@ const toRecord = (r: Row): AgentRecord => ({
   taskId: r.taskId,
   name: r.name,
   status: r.status,
+  kind: r.kind,
   currentActivity: r.currentActivity,
   worktreePath: r.worktreePath,
   branch: r.branch,
@@ -76,6 +79,16 @@ export class AgentRepository {
       .orderBy(desc(developerAgents.createdAt), desc(sql`rowid`))
       .all()
       .map(toRecord)
+  }
+
+  /** Every agent that works in the same worktree (a planning agent and the execution agent that follows it share one). */
+  listByWorktree(worktreePath: string): AgentRecord[] {
+    return this.db.select().from(developerAgents).where(eq(developerAgents.worktreePath, worktreePath)).all().map(toRecord)
+  }
+
+  /** Marks every agent that shares a worktree as having lost it. */
+  markWorktreeRemovedByPath(worktreePath: string): void {
+    this.db.update(developerAgents).set({ worktreeRemoved: true, updatedAt: Date.now() }).where(eq(developerAgents.worktreePath, worktreePath)).run()
   }
 
   activeForTask(taskId: string): AgentRecord | undefined {

@@ -62,7 +62,7 @@ export function DashboardPage() {
         <Stat label="Projects" value={projects.filter((p) => p.status === 'active').length} />
         <Stat label="Open tasks" value={summary?.open ?? '—'} note={summary ? `${summary.byStatus['in_progress'] ?? 0} in progress` : undefined} />
         <Stat label="Developer agents" value={running ?? '—'} note="running now" />
-        <Stat label="Pending approvals" value={summary?.byStatus['awaiting_approval'] ?? (summary ? 0 : '—')} note="plans awaiting you" />
+        <Stat label="Pending approvals" value={summary ? (summary.byStatus['awaiting_approval'] ?? 0) + (summary.byStatus['in_review'] ?? 0) : '—'} note="plans and results awaiting you" />
       </section>
 
       <div className="mb-3 mt-8 flex items-center justify-between">

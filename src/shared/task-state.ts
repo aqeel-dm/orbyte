@@ -27,7 +27,8 @@ const TABLE: Record<TaskStatus, Partial<Record<TaskStatus, TransitionActor[]>>> 
   ready: { backlog: U, planning: O, blocked: UO, cancelled: U },
   planning: { awaiting_approval: O, ready: UO, blocked: UO, cancelled: U },
   awaiting_approval: { in_progress: O, planning: O, blocked: UO, cancelled: U },
-  in_progress: { in_review: O, ready: O, blocked: UO, cancelled: U },
+  // in_progress -> awaiting_approval: an execution that ended without a result goes back to the approval gate.
+  in_progress: { in_review: O, ready: O, awaiting_approval: O, blocked: UO, cancelled: U },
   in_review: { completed: O, in_progress: O, blocked: UO, cancelled: U },
   blocked: { backlog: U, ready: UO, cancelled: U },
   completed: {},
@@ -41,6 +42,11 @@ export interface TransitionContext {
    * Until then nothing sets it, so execution cannot start.
    */
   approvalVerified?: boolean
+  /**
+   * Must be true to complete a task. Only the completion gate sets it, after verifying the user's
+   * stored acceptance of the unchanged, Team Lead-reviewed result.
+   */
+  completionVerified?: boolean
 }
 
 export type TransitionCheck = { ok: true } | { ok: false; reason: string }
@@ -51,6 +57,9 @@ export function checkTransition(from: TaskStatus, to: TaskStatus, actor: Transit
   if (!actors.includes(actor)) return { ok: false, reason: `Moving from ${from} to ${to} is not something you can do directly.` }
   if (to === 'in_progress' && ctx.approvalVerified !== true) {
     return { ok: false, reason: 'A task cannot start without a verified approval of its plan.' }
+  }
+  if (to === 'completed' && ctx.completionVerified !== true) {
+    return { ok: false, reason: 'A task cannot be completed without a verified acceptance of its reviewed result.' }
   }
   return { ok: true }
 }

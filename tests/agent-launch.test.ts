@@ -4,8 +4,8 @@ import { PLANNING_DENIED_TOOLS, PLANNING_TOOLS, agentEnv, buildAgentLaunch } fro
 import { TerminalBuffer, lastTerminalTitle } from '../src/main/modules/agents/developers/terminal-buffer'
 import { TerminalHub } from '../src/main/modules/agents/developers/terminal-hub'
 
-const planServer = { command: '/fake/electron', scriptPath: '/fake/out/main/plan-server.js', inboxDir: '/fake/inbox/agent-1' }
-const input = { planServer, taskTitle: 'Add login', taskDescription: 'Use sessions.', branch: 'orbyte/add-login-1234abcd', baseBranch: 'main', sessionId: '11111111-1111-4111-8111-111111111111', repoSettingsTrust: 'trusted' as const }
+const agentServer = { command: '/fake/electron', scriptPath: '/fake/out/main/agent-server.js', inboxDir: '/fake/inbox/agent-1' }
+const input = { agentServer, taskTitle: 'Add login', taskDescription: 'Use sessions.', branch: 'orbyte/add-login-1234abcd', baseBranch: 'main', sessionId: '11111111-1111-4111-8111-111111111111', repoSettingsTrust: 'trusted' as const }
 
 describe('buildAgentLaunch', () => {
   it('starts in plan mode with a known session id, the write/exec tools denied, and the prompt after --', () => {

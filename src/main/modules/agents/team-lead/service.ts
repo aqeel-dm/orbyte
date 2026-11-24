@@ -102,6 +102,8 @@ export class TeamLeadService {
     turnId?: string
     /** Only for purpose 'review': the tool that records the review of one specific plan. */
     reviewTools?: TeamLeadReviewTools
+    /** Only for purpose 'review': a directory (an agent's worktree) the read-only tools may also read. */
+    readDir?: string
   }): Promise<TurnOutcome> {
     const turnId = opts.turnId ?? randomUUID()
     const p = this.runTurnGuarded({ ...opts, turnId })
@@ -160,7 +162,7 @@ export class TeamLeadService {
   }
 
   private async runWithResumeFallback(
-    opts: { projectId: string; prompt: string; maxTurns?: number; purpose: TurnPurpose; reviewTools?: TeamLeadReviewTools },
+    opts: { projectId: string; prompt: string; maxTurns?: number; purpose: TurnPurpose; reviewTools?: TeamLeadReviewTools; readDir?: string },
     turnId: string,
     abort: AbortController,
     state: TurnState,
@@ -176,7 +178,7 @@ export class TeamLeadService {
   }
 
   private async attempt(
-    opts: { projectId: string; prompt: string; maxTurns?: number; purpose: TurnPurpose; reviewTools?: TeamLeadReviewTools },
+    opts: { projectId: string; prompt: string; maxTurns?: number; purpose: TurnPurpose; reviewTools?: TeamLeadReviewTools; readDir?: string },
     turnId: string,
     abort: AbortController,
     state: TurnState,
@@ -203,6 +205,7 @@ export class TeamLeadService {
         // Only review turns get the review tool, and then no task tools.
         reviewTools: opts.purpose === 'review' ? (opts.reviewTools ?? null) : null,
         ephemeral: opts.purpose === 'review',
+        ...(opts.purpose === 'review' && opts.readDir ? { readDir: opts.readDir } : {}),
         abortController: abort,
         ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {})
       })

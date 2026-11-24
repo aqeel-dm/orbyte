@@ -5,6 +5,7 @@ import type { TeamLeadRunRequest } from '../src/main/modules/agents/team-lead/op
 import { TeamLeadService } from '../src/main/modules/agents/team-lead/service'
 import { makeReviewHandlers, type TeamLeadReviewTools } from '../src/main/modules/agents/team-lead/tools'
 import { buildTeamLeadOptions } from '../src/main/modules/agents/team-lead/options'
+import { ExecutionRepository } from '../src/main/modules/orchestration/execution-repository'
 import { ApprovalService } from '../src/main/modules/orchestration/approval-service'
 import { ReviewService } from '../src/main/modules/orchestration/review-service'
 import type { SubmitReviewInput, TaskPlan } from '../src/shared/schemas/plan'
@@ -141,7 +142,7 @@ describe('Team Lead plan review (advice only)', () => {
     const { s, task, plan } = await withPlan()
     const r = reviewer(s, async () => { await s.sleep(60) })
     const approvals = new ApprovalService({
-      db: s.handle.db, projects: s.projects, taskRepo: s.taskRepo, tasks: s.tasks, agents: s.agentRepo, plans: s.planRepo, emit: () => undefined,
+      db: s.handle.db, projects: s.projects, taskRepo: s.taskRepo, tasks: s.tasks, agents: s.agentRepo, plans: s.planRepo, results: new ExecutionRepository(s.handle.db), emit: () => undefined,
       reviewInProgress: (id) => r.reviews.isInProgress(id)
     })
     r.reviews.request(s.project.id, task.id, plan.id)
@@ -200,7 +201,7 @@ describe('agent launch carries the plan server and a private inbox', () => {
     const mcp = args.find((a) => a.startsWith('--mcp-config='))!
     const cfg = JSON.parse(mcp.slice('--mcp-config='.length)) as { mcpServers: Record<string, { command: string; args: string[]; env: Record<string, string> }> }
     expect(Object.keys(cfg.mcpServers)).toEqual(['orbyte'])
-    expect(cfg.mcpServers['orbyte']).toMatchObject({ command: '/fake/electron', args: ['/fake/plan-server.js'], env: { ELECTRON_RUN_AS_NODE: '1', ORBYTE_PLAN_INBOX: s.inbox.dirFor(agent.id) } })
+    expect(cfg.mcpServers['orbyte']).toMatchObject({ command: '/fake/electron', args: ['/fake/agent-server.js'], env: { ELECTRON_RUN_AS_NODE: '1', ORBYTE_AGENT_INBOX: s.inbox.dirFor(agent.id), ORBYTE_AGENT_KIND: 'planning' } })
     expect(args).toContain('--strict-mcp-config')
     expect(args.join(' ')).not.toMatch(/mcp__\*/)
     expect(statSync(s.inbox.dirFor(agent.id)).mode & 0o777).toBe(0o700)

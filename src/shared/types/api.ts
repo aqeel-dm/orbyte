@@ -1,6 +1,7 @@
 import type { DiscoveryResult } from '../schemas/onboarding'
 import type { ListProjectsInput, PickDirectoryResult, Project, RegisterProjectInput } from '../schemas/project'
 import type { AppEvent, ChatMessage, SendMessageResult } from '../schemas/team-lead'
+import type { ExecutionBundle, ResultDecision } from '../schemas/execution'
 import type { PlanApproval, PlanBundle } from '../schemas/plan'
 import type { AgentSummary, AttachResult, DeveloperAgent, TerminalEvent } from '../schemas/agent'
 import type { ActivityEvent, CreateTaskInput, ProposalItem, Task, TaskProposal, TaskSummary, UpdateTaskInput } from '../schemas/task'
@@ -73,6 +74,17 @@ export interface OrbyteApi {
     revoke(projectId: string, taskId: string): Promise<Result<PlanBundle>>
     /** Asks the Team Lead to (re)review the current plan. Advice only. */
     requestReview(projectId: string, taskId: string, planId: string): Promise<Result<null>>
+  }
+  executions: {
+    /** Starts execution of an approved plan. The backend runs the gate: it refuses without a valid approval. */
+    start(projectId: string, taskId: string): Promise<Result<DeveloperAgent>>
+    get(projectId: string, taskId: string): Promise<Result<ExecutionBundle>>
+    /** Your acceptance of the CURRENT, Team Lead-reviewed, unchanged result. The only way a task completes. */
+    accept(projectId: string, taskId: string, resultId: string): Promise<Result<ResultDecision>>
+    /** Sends the task back to an execution agent with your feedback. */
+    requestChanges(projectId: string, taskId: string, resultId: string, feedback: string): Promise<Result<DeveloperAgent>>
+    /** Asks the Team Lead (re)review the current result. Advice only. */
+    requestReview(projectId: string, taskId: string, resultId: string): Promise<Result<null>>
   }
   /** Terminal output for agents this window attached to. Returns an unsubscribe function. */
   onTerminalData(listener: (event: TerminalEvent) => void): () => void

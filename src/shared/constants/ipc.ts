@@ -51,6 +51,13 @@ export const IPC = {
     revoke: 'plans:revoke',
     requestReview: 'plans:requestReview'
   },
+  executions: {
+    start: 'executions:start',
+    get: 'executions:get',
+    accept: 'executions:accept',
+    requestChanges: 'executions:requestChanges',
+    requestReview: 'executions:requestReview'
+  },
   /** Main -> renderer push channel (one fixed channel; payloads are validated). */
   events: {
     app: 'events:app',

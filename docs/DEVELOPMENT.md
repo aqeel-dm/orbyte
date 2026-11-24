@@ -34,14 +34,17 @@ Needs a working Claude Code login (uses your subscription tokens). The native fo
 3. Relaunch with `--remote-debugging-port=9333` and drive `window.orbyte.*` over the DevTools protocol: `onboarding.start`, `teamLead.send`, `onEvent`.
 Check that an edit request is refused and `git status` of the repo stays clean.
 
-## The submit_plan server
-Claude Code starts `out/main/plan-server.js` (a second electron-vite entry) as an MCP server for each planning agent, using the Electron binary with `ELECTRON_RUN_AS_NODE=1`. `pnpm build` produces it, and it resolves `@modelcontextprotocol/sdk` and its shared chunk from `out/main` and `node_modules`. You can smoke-test it by speaking MCP over stdio: `ELECTRON_RUN_AS_NODE=1 ORBYTE_PLAN_INBOX=/tmp/inbox electron out/main/plan-server.js`, then `initialize`, `tools/list` and a `tools/call` of `submit_plan`; a validated plan file appears in the inbox.
+## The agent MCP server
+Claude Code starts `out/main/agent-server.js` (a second electron-vite entry) as an MCP server for each agent (`submit_plan` for planning agents; `report_progress` and `submit_result` for execution agents, chosen by `ORBYTE_AGENT_KIND`), using the Electron binary with `ELECTRON_RUN_AS_NODE=1`. `pnpm build` produces it, and it resolves `@modelcontextprotocol/sdk` and its shared chunk from `out/main` and `node_modules`. You can smoke-test it by speaking MCP over stdio: `ELECTRON_RUN_AS_NODE=1 ORBYTE_AGENT_INBOX=/tmp/inbox ORBYTE_AGENT_KIND=planning electron out/main/agent-server.js`, then `initialize`, `tools/list` and a `tools/call` of `submit_plan`; a validated plan file appears in the inbox.
 
 ## End-to-end check of developer agents
 Uses the real `claude` CLI (and your usage). Use a **scratch git repository with one commit**, not a real project: agents add branches and worktrees to the repository they work on.
 1. Build, launch once with `--user-data-dir=<tmp>` so migrations run, then insert a project row for the scratch repo (`repo_settings_trust` = `untrusted` or `trusted`) with `ELECTRON_RUN_AS_NODE=1 electron seed.cjs`.
 2. Relaunch with `--remote-debugging-port=9333`; drive `window.orbyte.tasks` and `window.orbyte.agents` over the DevTools protocol; answer Claude's folder-trust prompt, if shown, with `agents.write` (arrow down, then Enter; the default is "No, exit").
 3. To test a crash, `kill -9` the **Electron main process**, not the `pnpm`/Node wrapper above it (`ps -axo pid,ppid,command` shows the chain), then relaunch on the same directory.
+
+## End-to-end check of execution and review
+Same setup as the agents check (scratch repo, real `claude`, real Team Lead, uses your usage). Drive over the DevTools protocol: create and ready a small task, `agents.start`, wait for the plan, `plans.approve`, then `executions.start`. Answer the folder-trust prompt (`agents.write`) if shown. Expect: the task is `in_progress`; after the agent calls `submit_result` the task is `in_review`, `executions.get` shows the evidence and the Team Lead's review; `executions.accept` before a review exists is refused; changing a file in the worktree makes `accept` fail with `CODE_CHANGED`; `executions.requestChanges` starts a second run; `accept` on the current, reviewed result completes the task. Agent commands that need permission wait in its terminal.
 
 ## Running the app headlessly for checks
 `electron . --remote-debugging-port=9333` after `pnpm build`, then inspect over the DevTools protocol (this was how the renderer isolation was verified).

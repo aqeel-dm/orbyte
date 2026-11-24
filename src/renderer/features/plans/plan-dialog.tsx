@@ -98,7 +98,12 @@ export function PlanDialog({ projectId, task, open, onOpenChange }: { projectId:
                 {gate.executionAuthorized ? `Execution authorized by your approval of plan version ${validApproval?.planVersion}` : 'Execution is blocked'}
               </div>
               {gate.blockers.length > 0 && <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-muted-foreground">{gate.blockers.map((b, n) => <li key={n}>{b}</li>)}</ul>}
-              {gate.executionAuthorized && <p className="mt-1 text-xs text-muted-foreground">Execution itself is not available yet (a later phase). Approval is recorded and checked by the backend.</p>}
+              {gate.executionAuthorized && (
+                <div className="mt-2 flex items-center gap-3">
+                  <Button size="sm" disabled={busy} onClick={() => run(() => window.orbyte.executions.start(projectId, task.id).then((r) => ({ ok: r.ok, ...(r.ok ? {} : { error: r.error }) })))}>Start execution</Button>
+                  <span className="text-xs text-muted-foreground">Starts an agent that implements this plan in its worktree. The backend re-checks your approval and uses it up; commands needing permission wait for you in the terminal.</span>
+                </div>
+              )}
             </Card>
 
             {!shown ? (

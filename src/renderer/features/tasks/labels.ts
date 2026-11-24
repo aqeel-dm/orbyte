@@ -32,6 +32,18 @@ export function describeEvent(type: string, payload: Record<string, unknown>): s
     case 'proposal.recorded': return `Team Lead proposed ${String(payload['count'] ?? '')} task(s)`
     case 'proposal.approved': return 'Task proposal approved'
     case 'proposal.dismissed': return 'Task proposal dismissed'
+    case 'plan.submitted': return 'Agent submitted a plan'
+    case 'plan.approved': return 'You approved a plan'
+    case 'plan.rejected': return 'You rejected a plan'
+    case 'execution.authorized': return 'Execution authorized by your approval'
+    case 'execution.started': return 'Execution started'
+    case 'execution.ended': return 'Execution ended'
+    case 'execution.revision_authorized': return 'Revision authorized by your change request'
+    case 'result.submitted': return 'Agent submitted a result'
+    case 'result.reviewed': return 'Team Lead reviewed the result'
+    case 'result.accepted': return 'You accepted the result'
+    case 'result.changes_requested': return 'You requested changes'
+    case 'acceptance.invalidated': return 'Acceptance no longer valid'
     default: return type
   }
 }

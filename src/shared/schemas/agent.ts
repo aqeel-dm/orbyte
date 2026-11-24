@@ -15,6 +15,8 @@ export const developerAgentSchema = z.object({
   taskId: z.string(),
   name: z.string(),
   status: agentStatusSchema,
+  /** planning: investigates and submits a plan. execution: implements the approved plan. */
+  kind: z.enum(['planning', 'execution']),
   currentActivity: z.string(),
   /** Isolated git worktree this agent works in, and its branch. */
   worktreePath: z.string(),

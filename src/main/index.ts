@@ -19,7 +19,12 @@ import { TerminalHub } from './modules/agents/developers/terminal-hub'
 import { GitWorktrees } from './modules/agents/developers/worktrees'
 import { registerAgentHandlers } from './ipc/agents'
 import { registerPlanHandlers } from './ipc/plans'
-import { PlanInbox } from './modules/agents/developers/plan-inbox'
+import { registerExecutionHandlers } from './ipc/executions'
+import { CompletionService } from './modules/orchestration/completion-service'
+import { ExecutionRepository } from './modules/orchestration/execution-repository'
+import { ExecutionService } from './modules/orchestration/execution-service'
+import { ResultReviewService } from './modules/orchestration/result-review-service'
+import { AgentInbox } from './modules/agents/developers/agent-inbox'
 import { ApprovalService } from './modules/orchestration/approval-service'
 import { PlanRepository } from './modules/orchestration/plan-repository'
 import { PlanService } from './modules/orchestration/plan-service'
@@ -59,6 +64,7 @@ async function bootstrap(): Promise<void> {
   const taskRepo = new TaskRepository(dbHandle.db)
   // Stopping an agent when the user cancels or blocks its task: the service is created just below.
   let approvalsRef: { onTaskLeft(taskId: string): void } | undefined
+  let completionRef: { onTaskLeft(taskId: string): void } | undefined
   const taskService = new TaskService({
     projects: projectRepo,
     tasks: taskRepo,
@@ -67,6 +73,7 @@ async function bootstrap(): Promise<void> {
     onLeaveActive: (taskId) => {
       agentService?.onTaskLeft(taskId)
       approvalsRef?.onTaskLeft(taskId)
+      completionRef?.onTaskLeft(taskId)
     }
   })
   const proposalService = new ProposalService({
@@ -101,8 +108,10 @@ async function bootstrap(): Promise<void> {
     onPlanSubmitted: (plan) => reviews?.reviewAutomatically(plan)
   })
   reviews = new ReviewService({ projects: projectRepo, taskRepo, plans: planRepo, teamLead, emit })
+  const execRepo = new ExecutionRepository(dbHandle.db)
   const approvals = new ApprovalService({
     db: dbHandle.db,
+    results: execRepo,
     projects: projectRepo,
     taskRepo,
     tasks: taskService,
@@ -125,20 +134,25 @@ async function bootstrap(): Promise<void> {
   // Terminal output goes only to windows that attached to that agent.
   const hub = new TerminalHub((windowId, event) => webContents.fromId(windowId)?.send(IPC.events.terminal, event))
   app.on('web-contents-created', (_e, contents) => contents.once('destroyed', () => hub.detachAll(contents.id)))
+  const worktrees = new GitWorktrees()
+  let execution: ExecutionService | undefined
   const agents = (agentService = new AgentService({
     projects: projectRepo,
     taskRepo,
     tasks: taskService,
     agents: agentRepo,
-    worktrees: new GitWorktrees(),
+    worktrees,
     pty: createNodePtyFactory(),
     hub,
     resolveClaude: () => resolveClaudeBinary({ env: process.env, home: homedir() }),
     reaper: createProcessReaper(),
-    inbox: new PlanInbox(join(app.getPath('userData'), 'plan-inbox')),
+    inbox: new AgentInbox(join(app.getPath('userData'), 'plan-inbox')),
     // Claude Code starts this script (Electron run as plain Node) to give the agent its submit_plan tool.
-    planServer: { command: process.execPath, scriptPath: join(__dirname, 'plan-server.js') },
+    agentServer: { command: process.execPath, scriptPath: join(__dirname, 'agent-server.js') },
     onPlan: (agentId, plan) => void planService.ingest(agentId, plan),
+    onProgress: (agentId, messages) => execution?.onProgress(agentId, messages),
+    onResult: async (agentId, result) => void (await execution?.onResult(agentId, result)),
+    onExecutionAgentEnded: (agent, status) => execution?.onAgentEnded(agent, status),
     env: () => process.env,
     worktreeRoot: join(app.getPath('userData'), 'worktrees'),
     logDir: join(app.getPath('userData'), 'terminal-logs'),
@@ -146,8 +160,23 @@ async function bootstrap(): Promise<void> {
   }))
   await agents.recoverInterrupted()
 
+  const resultReviews = new ResultReviewService({ projects: projectRepo, taskRepo, exec: execRepo, plans: planRepo, agents: agentRepo, worktrees, teamLead, emit })
+  execution = new ExecutionService({
+    projects: projectRepo, taskRepo, tasks: taskService, agents: agentRepo, agentService: agents, approvals, plans: planRepo,
+    exec: execRepo, worktrees, emit,
+    // A stored result is sent to the Team Lead for advice. This never accepts anything.
+    onResultSubmitted: (result) => resultReviews.reviewAutomatically(result)
+  })
+  const completion = new CompletionService({
+    projects: projectRepo, taskRepo, tasks: taskService, exec: execRepo, agents: agentRepo, worktrees, emit,
+    reviewInProgress: (resultId) => resultReviews.isInProgress(resultId)
+  })
+  completionRef = completion
+  execution.recoverInterrupted()
+
   registerAgentHandlers({ agents })
   registerPlanHandlers({ approvals, reviews })
+  registerExecutionHandlers({ execution, completion, resultReviews })
   registerTaskHandlers({ tasks: taskService, proposals: proposalService, activity: new ActivityRepository(dbHandle.db), projects: projectService })
   registerProjectHandlers({
     projects: projectService,

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { MAX_TERMINAL_WRITE_BYTES, type AttachResult, type DeveloperAgent } from '@shared/schemas/agent'
+import type { SubmittedResult } from '@shared/schemas/execution'
 import type { SubmittedPlan } from '@shared/schemas/plan'
 import type { AppEvent } from '@shared/schemas/team-lead'
 import { AppError } from '@shared/types/result'
@@ -9,8 +10,8 @@ import type { ProjectRepository } from '../../projects/repository'
 import type { TaskRepository } from '../../tasks/repository'
 import type { TaskService } from '../../tasks/service'
 import { AgentRepository, toPublicAgent, type AgentRecord } from './agent-repository'
-import { agentEnv, buildAgentLaunch } from './launch'
-import type { PlanInbox } from './plan-inbox'
+import { agentEnv, buildAgentLaunch, buildExecutionLaunch } from './launch'
+import type { AgentInbox } from './agent-inbox'
 import type { AgentProcessReaper } from './process-reaper'
 import { TerminalBuffer, lastTerminalTitle } from './terminal-buffer'
 import type { TerminalHub } from './terminal-hub'
@@ -39,11 +40,16 @@ export interface AgentServiceDeps {
   hub: TerminalHub
   resolveClaude: () => string | null
   /** Per-agent private directories where the submit_plan tool drops plans. */
-  inbox: PlanInbox
+  inbox: AgentInbox
   /** How Claude Code starts Orbyte's plan server (Electron run as plain Node, plus the built script). */
-  planServer: { command: string; scriptPath: string }
-  /** Called for each plan an agent submits. Never approves anything. */
+  agentServer: { command: string; scriptPath: string }
+  /** Called for each plan a PLANNING agent submits. Never approves anything. */
   onPlan?: (agentId: string, plan: SubmittedPlan) => void
+  /** Progress notes and the final result from an EXECUTION agent. Self-reported: the receiver must not trust them. */
+  onProgress?: (agentId: string, messages: string[]) => void
+  onResult?: (agentId: string, result: SubmittedResult) => Promise<void>
+  /** An execution agent's process ended (after its inbox was drained). The task's state is handled there. */
+  onExecutionAgentEnded?: (agent: AgentRecord, status: AgentRecord['status']) => void
   /** Ends processes left behind by a crash. Optional so tests can omit it. */
   reaper?: AgentProcessReaper
   env: () => NodeJS.ProcessEnv
@@ -187,7 +193,7 @@ export class AgentService {
         buildAgentLaunch({
           taskTitle: task.title, taskDescription: task.description, branch, baseBranch, sessionId,
           repoSettingsTrust: project.repoSettingsTrust === 'trusted' ? 'trusted' : 'untrusted',
-          planServer: { command: this.deps.planServer.command, scriptPath: this.deps.planServer.scriptPath, inboxDir }
+          agentServer: { command: this.deps.agentServer.command, scriptPath: this.deps.agentServer.scriptPath, inboxDir }
         }),
         { cwd: worktreePath, env: agentEnv(this.deps.env()), cols: 120, rows: 32 }
       )
@@ -198,22 +204,27 @@ export class AgentService {
       throw new AppError('SPAWN_FAILED', 'Could not start Claude Code. See the application log.')
     }
 
+    this.register(agent, proc)
+
+    const running = this.deps.agents.markRunning(id, proc.pid)
+    this.changed(project.id, id)
+    return toPublicAgent(running ?? agent)
+  }
+
+  /** Tracks a started process: output buffering, exit handling and inbox polling. */
+  private register(agent: AgentRecord, proc: PtyProcess): void {
     let resolveDone!: () => void
     const done = new Promise<void>((r) => (resolveDone = r))
     const live: Live = {
       proc, buffer: new TerminalBuffer(), pending: '', flushTimer: null, killTimer: null, inboxTimer: null, drainPromise: null, title: '', lastActivityAt: 0,
       stopRequested: false, interrupted: false, done, resolveDone
     }
-    this.live.set(id, live)
+    this.live.set(agent.id, live)
     proc.onData((d) => this.onData(agent, live, d))
     proc.onExit((e) => void this.onExit(agent, live, e))
-    // Pick up plans the agent submits (polling a private directory; no listener or socket is opened).
+    // Pick up what the agent submits (polling a private directory; no listener or socket is opened).
     live.inboxTimer = setInterval(() => void this.drainInbox(agent, live), 1000)
     live.inboxTimer.unref()
-
-    const running = this.deps.agents.markRunning(id, proc.pid)
-    this.changed(project.id, id)
-    return toPublicAgent(running ?? agent)
   }
 
   stop(projectId: string, agentId: string): DeveloperAgent {
@@ -223,11 +234,103 @@ export class AgentService {
     return toPublicAgent(agent)
   }
 
+  /**
+   * Stops an agent and waits (up to `timeoutMs`) for its process to end. Used before an execution agent
+   * takes over the planning agent's worktree. Returns whether it is stopped.
+   */
+  async stopAndWait(agentId: string, timeoutMs = 10_000): Promise<boolean> {
+    const live = this.live.get(agentId)
+    if (!live) return true
+    this.requestStop(agentId)
+    await Promise.race([live.done, new Promise((r) => setTimeout(r, timeoutMs))])
+    return !this.live.has(agentId)
+  }
+
+  /**
+   * Starts the EXECUTION agent for a task, in the worktree its planning agent used. It does not decide
+   * whether execution is allowed: only the execution service calls this, after the gate. The task's state
+   * is the caller's business too.
+   */
+  async startExecution(opts: {
+    basedOn: AgentRecord
+    planText: string
+    planVersion: number
+    feedback: string | null
+    /** Runs after the agent row exists and before the process starts, so callers can record the run first. */
+    beforeSpawn?: (agent: AgentRecord) => void
+  }): Promise<AgentRecord> {
+    if (this.closing) throw new AppError('SHUTTING_DOWN', 'Orbyte is closing.')
+    const { basedOn } = opts
+    const project = this.requireProject(basedOn.projectId)
+    if (project.status === 'archived') throw new AppError('PROJECT_ARCHIVED', 'This project is archived. Restore it to continue.')
+    if (project.repoSettingsTrust === 'unset') throw new AppError('TRUST_REQUIRED', "Decide whether to use this repository's Claude settings first.")
+    const task = this.deps.taskRepo.get(basedOn.taskId)
+    if (!task || task.projectId !== project.id) throw new AppError('NOT_FOUND', 'Task not found.')
+    if (this.starting.has(task.id) || this.deps.agents.activeForTask(task.id)) throw new AppError('AGENT_ALREADY_RUNNING', 'An agent is already working on this task.')
+    if (this.deps.agents.countActive() + this.starting.size >= (this.deps.maxActive ?? DEFAULT_MAX_ACTIVE)) throw new AppError('TOO_MANY_AGENTS', 'Too many agents are running. Stop one first.')
+    const claude = this.deps.resolveClaude()
+    if (!claude) throw new AppError('CLAUDE_NOT_FOUND', 'The `claude` command was not found. Install Claude Code and make sure it is on your PATH.')
+    // The worktree must still exist, inside Orbyte's directory (the work lives there).
+    if (basedOn.worktreeRemoved || (await containment(this.deps.worktreeRoot, basedOn.worktreePath)) !== 'inside') {
+      throw new AppError('WORKTREE_FAILED', "The agent's worktree is gone, so the work cannot continue there.")
+    }
+
+    this.starting.add(task.id)
+    this.inFlight++
+    try {
+      const id = randomUUID()
+      const sessionId = randomUUID()
+      const agent = this.deps.agents.create({
+        id, projectId: project.id, taskId: task.id, name: `Agent ${id.slice(0, 4)}`, kind: 'execution', claudeSessionId: sessionId,
+        worktreePath: basedOn.worktreePath, branch: basedOn.branch, baseBranch: basedOn.baseBranch, baseCommit: basedOn.baseCommit
+      })
+      this.starting.delete(task.id)
+      if (this.closing) {
+        this.deps.agents.finish(id, 'failed', null, 'App closing')
+        throw new AppError('SHUTTING_DOWN', 'Orbyte is closing.')
+      }
+      let proc: PtyProcess
+      try {
+        opts.beforeSpawn?.(agent)
+        const inboxDir = await this.deps.inbox.prepare(id)
+        proc = this.deps.pty.spawn(
+          claude,
+          buildExecutionLaunch({
+            taskTitle: task.title, taskDescription: task.description, planText: opts.planText, planVersion: opts.planVersion, feedback: opts.feedback,
+            branch: basedOn.branch, baseBranch: basedOn.baseBranch, sessionId,
+            repoSettingsTrust: project.repoSettingsTrust === 'trusted' ? 'trusted' : 'untrusted',
+            agentServer: { command: this.deps.agentServer.command, scriptPath: this.deps.agentServer.scriptPath, inboxDir }
+          }),
+          { cwd: basedOn.worktreePath, env: agentEnv(this.deps.env()), cols: 120, rows: 32 }
+        )
+      } catch (err) {
+        console.error('[agents] execution spawn failed', err)
+        // The worktree holds the work: it is never removed on a failed start.
+        this.deps.agents.finish(id, 'failed', null, 'Failed to start')
+        this.changed(project.id, id)
+        if (err instanceof AppError) throw err
+        throw new AppError('SPAWN_FAILED', 'Could not start Claude Code. See the application log.')
+      }
+      this.register(agent, proc)
+      const running = this.deps.agents.markRunning(id, proc.pid)
+      this.changed(project.id, id)
+      return running ?? agent
+    } finally {
+      this.starting.delete(task.id)
+      this.inFlight--
+    }
+  }
+
   /** Archiving a project stops everything running for it. */
   stopAllForProject(projectId: string): void {
     for (const agent of this.deps.agents.list(projectId)) {
       if (this.live.has(agent.id)) this.requestStop(agent.id)
     }
+  }
+
+  /** Asks one agent's process to end (no ownership check: internal callers only). */
+  stopAgentById(agentId: string): void {
+    if (this.live.has(agentId)) this.requestStop(agentId)
   }
 
   /** Called when the user moves a task out of active work (cancel, block, back to ready): its agent must stop. */
@@ -242,6 +345,16 @@ export class AgentService {
       throw new AppError('AGENT_RUNNING', 'Stop the agent before discarding it.')
     }
     if (agent.worktreeRemoved) return toPublicAgent(agent)
+    // A planning agent and the execution agent after it share one worktree: nothing may be running in it,
+    // and the work must not be under way or under review.
+    const sharing = this.deps.agents.listByWorktree(agent.worktreePath)
+    if (sharing.some((a) => this.live.has(a.id) || a.status === 'starting' || a.status === 'running')) {
+      throw new AppError('AGENT_RUNNING', 'Stop the agents working in this worktree before discarding it.')
+    }
+    const task = this.deps.taskRepo.get(agent.taskId)
+    if (task && (task.status === 'in_progress' || task.status === 'in_review')) {
+      throw new AppError('TASK_ACTIVE', 'This task is being implemented or reviewed. Cancel it or finish the review first.')
+    }
     const project = this.requireProject(projectId)
     // Follows symlinks, so a link swapped into the worktree directory cannot point us elsewhere.
     const where = await containment(this.deps.worktreeRoot, agent.worktreePath)
@@ -262,7 +375,8 @@ export class AgentService {
     }
     await this.deps.worktrees.deleteBranchIfUnmoved(project.repoPath, agent.branch, agent.baseCommit)
     const updated = this.deps.agents.markWorktreeRemoved(agentId)
-    await this.deps.inbox.remove(agentId)
+    this.deps.agents.markWorktreeRemovedByPath(agent.worktreePath)
+    for (const a of sharing) await this.deps.inbox.remove(a.id)
     this.changed(projectId, agentId)
     return toPublicAgent(updated ?? agent)
   }
@@ -381,13 +495,29 @@ export class AgentService {
 
   private async doDrain(agent: AgentRecord): Promise<void> {
     try {
-      const { plans, rejected } = await this.deps.inbox.drain(agent.id)
-      if (rejected > 0) console.warn(`[agents] discarded ${rejected} invalid plan file(s) from ${agent.name}`)
-      for (const plan of plans) {
+      const { plans, progress, results, rejected } = await this.deps.inbox.drain(agent.id)
+      if (rejected > 0) console.warn(`[agents] discarded ${rejected} invalid file(s) from ${agent.name}`)
+      // Each kind of agent may only deliver its own kind of file: a forged file of the wrong kind is ignored.
+      if (agent.kind === 'planning') {
+        for (const plan of plans) {
+          try {
+            this.deps.onPlan?.(agent.id, plan)
+          } catch (err) {
+            console.error('[agents] plan handling failed', err)
+          }
+        }
+      } else {
         try {
-          this.deps.onPlan?.(agent.id, plan)
+          if (progress.length > 0) this.deps.onProgress?.(agent.id, progress)
         } catch (err) {
-          console.error('[agents] plan handling failed', err)
+          console.error('[agents] progress handling failed', err)
+        }
+        for (const result of results) {
+          try {
+            await this.deps.onResult?.(agent.id, result)
+          } catch (err) {
+            console.error('[agents] result handling failed', err)
+          }
         }
       }
     } catch (err) {
@@ -424,9 +554,14 @@ export class AgentService {
     await this.saveLog(agent.id, live.buffer)
     const status = live.interrupted ? 'interrupted' : live.stopRequested ? 'stopped' : e.exitCode === 0 ? 'exited' : 'failed'
     step('record exit', () => void this.deps.agents.finish(agent.id, status, e.exitCode, live.title))
-    // If the agent ended without a plan the task goes back to Ready; if one was captured the task is
-    // already awaiting approval and stays there.
-    step('return task', () => this.returnTaskToReady(agent.projectId, agent.taskId))
+    if (agent.kind === 'planning') {
+      // If the agent ended without a plan the task goes back to Ready; if one was captured the task is
+      // already awaiting approval and stays there.
+      step('return task', () => this.returnTaskToReady(agent.projectId, agent.taskId))
+    } else {
+      // An execution agent's task is handled by the execution service (result captured, or back to the gate).
+      step('execution ended', () => this.deps.onExecutionAgentEnded?.(agent, status))
+    }
     step('announce', () => this.changed(agent.projectId, agent.id))
     this.deps.hub.clear(agent.id)
     this.live.delete(agent.id)
