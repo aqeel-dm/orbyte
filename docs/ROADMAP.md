@@ -64,5 +64,8 @@ The result dialog can run the task's `package.json` test script in the agent's w
 ## Follow-up: notifications
 A main-process `Notifier` (`src/main/notifications/`) watches the app's change events and shows a native notification when a proposal, plan or result newly waits for you and no Orbyte window is focused; clicking it brings the window forward. It only reads state. Tested with fakes (6 tests); the real OS notification was not verified here. No on/off setting yet.
 
+## Follow-up: signed approvals
+Approvals, acceptances and change requests are signed (migration 0008, `src/main/security/row-signer.ts`) and the gate ignores unsigned or altered rows. 330 automated tests, including edited, unsigned, revived and forged rows. Not checked in a running app with the real Keychain (a first run creates `signing.key`; macOS may show a Keychain prompt). Existing approvals from before this change must be re-approved.
+
 ## Open items after Phase 7
-Deciding whether approval and acceptance rows need signing; `repoPath` re-validation for the Team Lead and later worktree operations (agent start now re-validates); how to treat the `!` shell-mode gap; packaging (**Planned**, deferred): `asarUnpack` for the SDK binary, `node-pty` and the agent server, Electron Fuses, signing.
+`repoPath` re-validation for the Team Lead and later worktree operations (agent start now re-validates); how to treat the `!` shell-mode gap; packaging (**Planned**, deferred): `asarUnpack` for the SDK binary, `node-pty` and the agent server, Electron Fuses, signing.

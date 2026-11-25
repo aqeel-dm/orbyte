@@ -114,7 +114,7 @@ A local-first, single-user desktop app that coordinates Claude Code developer ag
 | S-7 | Never fake agent, terminal, test or approval results | Met |
 | S-8 | Validate AI-generated structured output | Met (Zod) |
 | S-9 | Process crashes handled | Met |
-| S-10 | The approval gate holds against a process running as the user | **Not met, accepted**: approvals and acceptances are unsigned and Claude Code's `!` shell mode can run commands; documented in `SECURITY.md`, deferred by decision |
+| S-10 | The approval gate holds against a process running as the user | **Partial**: approvals, acceptances and change requests are HMAC-signed with a Keychain-protected key (editing or inserting rows no longer works). A process that can use the same key, or replay an old signed row, is not stopped, and Claude Code's `!` shell mode can still run commands; documented in `SECURITY.md` |
 
 ## 10. Integrations (10)
 
@@ -150,11 +150,11 @@ Made by the user while building (answers to questions, or direct instructions):
 | You accept completion, after a Team Lead review exists | TL-7, W-8 |
 | Commands that need approval ask in the terminal; Orbyte never answers them | W-6 |
 | Test results: agent report labelled unverified plus facts Orbyte collects. Later (item 4 of the follow-up list) an Orbyte-run test button was added | W-9 |
-| Signing of approvals deferred; document the limit | S-10 |
+| Signing of approvals deferred, then built later (item 6 of the follow-up list) with a safeStorage key | S-10 |
 | File logger; startup recovery, orphan cleanup and database backup in scope | L-3, L-4 |
 | No builds or packaging for now | E-5 |
 | Work directly on `main`; commit and push only when asked | `.claude/rules/git-workflow.md` |
 
 ## Open items
 
-Signing approval and acceptance rows; the `!` shell-mode gap; re-validating `repoPath` for the Team Lead and later worktree operations; the evidence shows line counts but not the diff text itself; Playwright tests; integration adapters; packaging. Each is also tracked in `ROADMAP.md` or `SECURITY.md`.
+the `!` shell-mode gap; re-validating `repoPath` for the Team Lead and later worktree operations; the evidence shows line counts but not the diff text itself; Playwright tests; integration adapters; packaging. Each is also tracked in `ROADMAP.md` or `SECURITY.md`.

@@ -199,7 +199,9 @@ export const planApprovals = sqliteTable(
     reason: text('reason').notNull().default(''),
     decidedAt: integer('decided_at').notNull().default(now),
     invalidatedAt: integer('invalidated_at'),
-    invalidationReason: text('invalidation_reason')
+    invalidationReason: text('invalidation_reason'),
+    /** HMAC over the row's authorizing fields, including its invalidation state. Null on rows from before signing: they never authorize. */
+    signature: text('signature')
   },
   (t) => [
     index('approvals_task_idx').on(t.taskId),
@@ -292,7 +294,9 @@ export const resultDecisions = sqliteTable(
     feedback: text('feedback').notNull().default(''),
     decidedAt: integer('decided_at').notNull().default(now),
     invalidatedAt: integer('invalidated_at'),
-    invalidationReason: text('invalidation_reason')
+    invalidationReason: text('invalidation_reason'),
+    /** See plan_approvals.signature. */
+    signature: text('signature')
   },
   (t) => [
     index('decisions_task_idx').on(t.taskId),

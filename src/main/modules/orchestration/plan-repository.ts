@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import type { Db, DbOrTx } from '../../database/client'
 import { activityEvents, planApprovals, planReviews, taskPlans } from '../../database/schema'
+import { processSigner, type RowSigner } from '../../security/row-signer'
+import { log } from '../../logging/logger'
 import type { PlanApproval, PlanReview, SubmittedPlan, TaskPlan } from '@shared/schemas/plan'
 
 const toPlan = (r: typeof taskPlans.$inferSelect): TaskPlan => ({
@@ -18,8 +20,13 @@ const toApproval = (r: typeof planApprovals.$inferSelect): PlanApproval => ({
   invalidatedAt: r.invalidatedAt, invalidationReason: r.invalidationReason
 })
 
+type ApprovalRow = typeof planApprovals.$inferSelect
+const approvalFields = (r: Omit<ApprovalRow, 'signature'>) =>
+  ['plan_approval', r.id, r.projectId, r.taskId, r.agentId, r.planId, r.planVersion, r.planHash, r.reviewer, r.status, r.reason, r.decidedAt, r.invalidatedAt, r.invalidationReason] as const
+
 export class PlanRepository {
-  constructor(private readonly db: Db) {}
+  /** The default key lives only in this process (fine for tests); the app passes the OS-protected one. */
+  constructor(private readonly db: Db, private readonly signer: RowSigner = processSigner()) {}
 
   getPlan(id: string): TaskPlan | undefined {
     const r = this.db.select().from(taskPlans).where(eq(taskPlans.id, id)).get()
@@ -49,7 +56,13 @@ export class PlanRepository {
       .from(planApprovals)
       .where(and(eq(planApprovals.taskId, taskId), eq(planApprovals.status, 'approved'), isNull(planApprovals.invalidatedAt)))
       .get()
-    return r && toApproval(r)
+    if (!r) return undefined
+    // A row that was not signed by this Orbyte (edited, copied in, or from before signing) authorizes nothing.
+    if (!this.signer.verify(approvalFields(r), r.signature)) {
+      log.warn(`[signing] ignoring an approval with an invalid signature (task ${taskId})`)
+      return undefined
+    }
+    return toApproval(r)
   }
 
   /**
@@ -85,26 +98,24 @@ export class PlanRepository {
   }
 
   addApproval(args: { plan: TaskPlan; status: 'approved' | 'rejected'; reason: string }, tx: DbOrTx): PlanApproval {
-    const row = tx
-      .insert(planApprovals)
-      .values({
-        id: randomUUID(), projectId: args.plan.projectId, taskId: args.plan.taskId, agentId: args.plan.agentId, planId: args.plan.id,
-        planVersion: args.plan.version, planHash: args.plan.contentHash, reviewer: 'user', status: args.status, reason: args.reason
-      })
-      .returning()
-      .get()
+    const base = {
+      id: randomUUID(), projectId: args.plan.projectId, taskId: args.plan.taskId, agentId: args.plan.agentId, planId: args.plan.id,
+      planVersion: args.plan.version, planHash: args.plan.contentHash, reviewer: 'user' as const, status: args.status, reason: args.reason,
+      decidedAt: Date.now(), invalidatedAt: null, invalidationReason: null
+    }
+    const row = tx.insert(planApprovals).values({ ...base, signature: this.signer.sign(approvalFields(base)) }).returning().get()
     this.event(tx, args.plan.projectId, args.status === 'approved' ? 'plan.approved' : 'plan.rejected', { taskId: args.plan.taskId, planId: args.plan.id, version: args.plan.version, reviewer: 'user' })
     return toApproval(row)
   }
 
   /** Marks any valid approval for the task invalid. Returns how many were invalidated. */
   invalidate(taskId: string, reason: string, tx: DbOrTx): number {
-    const rows = tx
-      .update(planApprovals)
-      .set({ invalidatedAt: Date.now(), invalidationReason: reason })
-      .where(and(eq(planApprovals.taskId, taskId), eq(planApprovals.status, 'approved'), isNull(planApprovals.invalidatedAt)))
-      .returning()
-      .all()
+    const open = tx.select().from(planApprovals).where(and(eq(planApprovals.taskId, taskId), eq(planApprovals.status, 'approved'), isNull(planApprovals.invalidatedAt))).all()
+    const at = Date.now()
+    const rows = open.map((o) => {
+      const next = { ...o, invalidatedAt: at, invalidationReason: reason }
+      return tx.update(planApprovals).set({ invalidatedAt: at, invalidationReason: reason, signature: this.signer.sign(approvalFields(next)) }).where(eq(planApprovals.id, o.id)).returning().get()
+    })
     for (const r of rows) this.event(tx, r.projectId, 'approval.invalidated', { taskId, planId: r.planId, version: r.planVersion, reason })
     return rows.length
   }

@@ -1,6 +1,6 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { app, BrowserWindow, dialog, Notification, webContents } from 'electron'
+import { app, BrowserWindow, dialog, Notification, safeStorage, webContents } from 'electron'
 import { openDatabase, type DbHandle } from './database/client'
 import { inspectRepository } from './modules/git/inspect'
 import { ChatRepository } from './modules/agents/team-lead/chat-repository'
@@ -36,6 +36,7 @@ import { ReviewService } from './modules/orchestration/review-service'
 import { setTrustedAppEntry } from './ipc/handle'
 import { registerProjectHandlers } from './ipc/projects'
 import { registerTaskHandlers } from './ipc/tasks'
+import { loadRowSigner } from './security/row-signer'
 import { Notifier } from './notifications/notifier'
 import { DecisionRepository } from './modules/orchestration/decision-repository'
 import { ProposalRepository } from './modules/orchestration/proposal-repository'
@@ -109,7 +110,9 @@ async function bootstrap(): Promise<void> {
     })
   }))
   // Plans, the Team Lead's advice on them, and the user's approvals (the execution gate).
-  const planRepo = new PlanRepository(dbHandle.db)
+  // Approvals and acceptances are signed with a key the OS keeps encrypted (Keychain on macOS).
+  const signer = loadRowSigner(join(app.getPath('userData'), 'signing.key'), safeStorage)
+  const planRepo = new PlanRepository(dbHandle.db, signer)
   const agentRepo = new AgentRepository(dbHandle.db)
   let reviews: ReviewService | undefined
   const planService = new PlanService({
@@ -122,7 +125,7 @@ async function bootstrap(): Promise<void> {
     onPlanSubmitted: (plan) => reviews?.reviewAutomatically(plan)
   })
   reviews = new ReviewService({ projects: projectRepo, taskRepo, plans: planRepo, teamLead, emit })
-  const execRepo = new ExecutionRepository(dbHandle.db)
+  const execRepo = new ExecutionRepository(dbHandle.db, signer)
   const approvals = new ApprovalService({
     db: dbHandle.db,
     results: execRepo,

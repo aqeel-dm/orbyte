@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { and, desc, eq, isNull, sql } from 'drizzle-orm'
+import { processSigner, type RowSigner } from '../../security/row-signer'
+import { log } from '../../logging/logger'
 import type { Db, DbOrTx } from '../../database/client'
 import { activityEvents, executionProgress, executionResults, executions, resultDecisions, resultReviews } from '../../database/schema'
 import type { Evidence, ExecutionProgress, ExecutionResult, ExecutionRun, ReportedTest, ResultDecision, ResultReview } from '@shared/schemas/execution'
@@ -24,8 +26,23 @@ const toDecision = (r: typeof resultDecisions.$inferSelect): ResultDecision => (
   reviewer: r.reviewer, decision: r.decision, feedback: r.feedback, decidedAt: r.decidedAt, invalidatedAt: r.invalidatedAt, invalidationReason: r.invalidationReason
 })
 
+type DecisionRow = typeof resultDecisions.$inferSelect
+const decisionFields = (r: Omit<DecisionRow, 'signature'>) =>
+  ['result_decision', r.id, r.projectId, r.taskId, r.resultId, r.resultVersion, r.snapshotHash, r.reviewer, r.decision, r.feedback, r.decidedAt, r.invalidatedAt, r.invalidationReason] as const
+
 export class ExecutionRepository {
-  constructor(private readonly db: Db) {}
+  /** The default key lives only in this process (fine for tests); the app passes the OS-protected one. */
+  constructor(private readonly db: Db, private readonly signer: RowSigner = processSigner()) {}
+
+  /** A decision row that this Orbyte did not sign (edited, copied in, or from before signing) authorizes nothing. */
+  private trusted(r: DecisionRow | undefined): ResultDecision | undefined {
+    if (!r) return undefined
+    if (!this.signer.verify(decisionFields(r), r.signature)) {
+      log.warn(`[signing] ignoring a decision with an invalid signature (task ${r.taskId})`)
+      return undefined
+    }
+    return toDecision(r)
+  }
 
   // ---- runs
   createRun(a: { projectId: string; taskId: string; agentId: string; planId: string; planVersion: number; planHash: string; approvalId: string | null; feedback: string | null }): ExecutionRun {
@@ -131,11 +148,12 @@ export class ExecutionRepository {
 
   // ---- the user's decisions
   addDecision(a: { result: ExecutionResult; decision: ResultDecision['decision']; feedback: string }, tx: DbOrTx): ResultDecision {
-    const row = tx
-      .insert(resultDecisions)
-      .values({ id: randomUUID(), projectId: a.result.projectId, taskId: a.result.taskId, resultId: a.result.id, resultVersion: a.result.version, snapshotHash: a.result.evidence.snapshotHash, reviewer: 'user', decision: a.decision, feedback: a.feedback })
-      .returning()
-      .get()
+    const base = {
+      id: randomUUID(), projectId: a.result.projectId, taskId: a.result.taskId, resultId: a.result.id, resultVersion: a.result.version,
+      snapshotHash: a.result.evidence.snapshotHash, reviewer: 'user' as const, decision: a.decision, feedback: a.feedback,
+      decidedAt: Date.now(), invalidatedAt: null, invalidationReason: null
+    }
+    const row = tx.insert(resultDecisions).values({ ...base, signature: this.signer.sign(decisionFields(base)) }).returning().get()
     this.event(tx, a.result.projectId, a.decision === 'accepted' ? 'result.accepted' : 'result.changes_requested', { taskId: a.result.taskId, resultId: a.result.id, version: a.result.version, reviewer: 'user' })
     return toDecision(row)
   }
@@ -148,7 +166,7 @@ export class ExecutionRepository {
       .from(resultDecisions)
       .where(and(eq(resultDecisions.taskId, taskId), eq(resultDecisions.decision, 'accepted'), isNull(resultDecisions.invalidatedAt)))
       .get()
-    return r && toDecision(r)
+    return this.trusted(r)
   }
   /** The user's standing, unused request for changes (it authorizes exactly one revision run). */
   validChangeRequest(taskId: string): ResultDecision | undefined {
@@ -158,28 +176,28 @@ export class ExecutionRepository {
       .where(and(eq(resultDecisions.taskId, taskId), eq(resultDecisions.decision, 'changes_requested'), isNull(resultDecisions.invalidatedAt)))
       .orderBy(desc(resultDecisions.decidedAt), desc(sql`rowid`))
       .get()
-    return r && toDecision(r)
+    return this.trusted(r)
   }
   /** Spends a change request. Returns false if it was already spent. */
   consumeChangeRequest(id: string, reason: string, tx: DbOrTx): boolean {
-    const rows = tx
-      .update(resultDecisions)
-      .set({ invalidatedAt: Date.now(), invalidationReason: reason })
-      .where(and(eq(resultDecisions.id, id), eq(resultDecisions.decision, 'changes_requested'), isNull(resultDecisions.invalidatedAt)))
-      .returning()
-      .all()
-    return rows.length > 0
+    const open = tx.select().from(resultDecisions).where(and(eq(resultDecisions.id, id), eq(resultDecisions.decision, 'changes_requested'), isNull(resultDecisions.invalidatedAt))).get()
+    if (!open) return false
+    return this.invalidateRow(tx, open, reason)
   }
 
   invalidateAcceptance(taskId: string, reason: string, tx: DbOrTx): number {
-    const rows = tx
-      .update(resultDecisions)
-      .set({ invalidatedAt: Date.now(), invalidationReason: reason })
-      .where(and(eq(resultDecisions.taskId, taskId), eq(resultDecisions.decision, 'accepted'), isNull(resultDecisions.invalidatedAt)))
-      .returning()
-      .all()
+    const open = tx.select().from(resultDecisions).where(and(eq(resultDecisions.taskId, taskId), eq(resultDecisions.decision, 'accepted'), isNull(resultDecisions.invalidatedAt))).all()
+    const rows = open.filter((o) => this.invalidateRow(tx, o, reason))
     for (const r of rows) this.event(tx, r.projectId, 'acceptance.invalidated', { taskId, resultId: r.resultId, version: r.resultVersion, reason })
     return rows.length
+  }
+
+  /** Marks a decision invalid and re-signs it in its new state. */
+  private invalidateRow(tx: DbOrTx, row: DecisionRow, reason: string): boolean {
+    const at = Date.now()
+    const next = { ...row, invalidatedAt: at, invalidationReason: reason }
+    const done = tx.update(resultDecisions).set({ invalidatedAt: at, invalidationReason: reason, signature: this.signer.sign(decisionFields(next)) }).where(and(eq(resultDecisions.id, row.id), isNull(resultDecisions.invalidatedAt))).returning().all()
+    return done.length > 0
   }
 
   runInTransaction<T>(fn: (tx: DbOrTx) => T): T {
