@@ -1,6 +1,6 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { app, BrowserWindow, dialog, webContents } from 'electron'
+import { app, BrowserWindow, dialog, Notification, webContents } from 'electron'
 import { openDatabase, type DbHandle } from './database/client'
 import { inspectRepository } from './modules/git/inspect'
 import { ChatRepository } from './modules/agents/team-lead/chat-repository'
@@ -36,6 +36,7 @@ import { ReviewService } from './modules/orchestration/review-service'
 import { setTrustedAppEntry } from './ipc/handle'
 import { registerProjectHandlers } from './ipc/projects'
 import { registerTaskHandlers } from './ipc/tasks'
+import { Notifier } from './notifications/notifier'
 import { DecisionRepository } from './modules/orchestration/decision-repository'
 import { ProposalRepository } from './modules/orchestration/proposal-repository'
 import { ProposalService } from './modules/orchestration/proposal-service'
@@ -70,7 +71,10 @@ async function bootstrap(): Promise<void> {
   // One fixed push channel to the renderer; payloads are validated again in the preload.
   const emit = (event: AppEvent): void => {
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IPC.events.app, event)
+    notifier?.onEvent(event)
   }
+  const decisionRepo = new DecisionRepository(dbHandle.db)
+  let notifier: Notifier | undefined
   const taskRepo = new TaskRepository(dbHandle.db)
   // Stopping an agent when the user cancels or blocks its task: the service is created just below.
   let approvalsRef: { onTaskLeft(taskId: string): void } | undefined
@@ -206,7 +210,7 @@ async function bootstrap(): Promise<void> {
   registerPlanHandlers({ approvals, reviews })
   registerExecutionHandlers({ execution, completion, resultReviews, testRuns })
   registerMaintenanceHandlers({ maintenance })
-  registerTaskHandlers({ tasks: taskService, proposals: proposalService, activity: new ActivityRepository(dbHandle.db), decisions: new DecisionRepository(dbHandle.db), projects: projectService })
+  registerTaskHandlers({ tasks: taskService, proposals: proposalService, activity: new ActivityRepository(dbHandle.db), decisions: decisionRepo, projects: projectService })
   registerProjectHandlers({
     projects: projectService,
     onboarding,
@@ -215,6 +219,22 @@ async function bootstrap(): Promise<void> {
   })
   installAppSecurity(appEntryUrl)
   createMainWindow()
+  if (Notification.isSupported()) {
+    notifier = new Notifier({
+      list: () => decisionRepo.list(),
+      isFocused: () => BrowserWindow.getAllWindows().some((w) => w.isFocused()),
+      show: (title, body) => {
+        const n = new Notification({ title, body, silent: false })
+        n.on('click', () => {
+          const win = BrowserWindow.getAllWindows()[0] ?? createMainWindow()
+          if (win.isMinimized()) win.restore()
+          win.show()
+          win.focus()
+        })
+        n.show()
+      }
+    })
+  }
 }
 
 // Single instance: one app owns the database and (later) all agent processes.

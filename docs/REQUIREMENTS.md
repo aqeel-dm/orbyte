@@ -77,6 +77,7 @@ A local-first, single-user desktop app that coordinates Claude Code developer ag
 | W-8 | Completion only after review; never because the agent says it succeeded | Met: needs a Team Lead review of the current result, the user's acceptance and an unchanged code snapshot |
 | W-9 | Test results are collected | Met: agent-reported results are labelled unverified; you can have Orbyte run the project's `test` script in the worktree (labelled collected by Orbyte). Limits: only a `package.json` test script is detected, and a fresh worktree has no installed dependencies |
 | W-10 | State, history and activity are persisted and shown on the dashboard | Met |
+| W-12 | Tell the user when something starts waiting for them | Met in code and unit tests (`Notifier`, native OS notification, only while no Orbyte window is focused, same list as "Waiting for you"). The OS notification itself was not seen on screen in an automated run, and there is no setting to turn it off |
 | W-11 | After you accept a result, Orbyte shows the commands to commit and merge it; it never runs them | Met (guidance only, built from the agent's recorded worktree and branch, single-quoted; not run against a real merge in the UI) |
 
 ## 7. User interface (7)
