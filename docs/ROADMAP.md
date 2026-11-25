@@ -7,10 +7,10 @@ Each phase must leave the app runnable. Do not start a phase without explicit au
 | 1 | Foundation | **Complete** (commit `9d62d2e`) | Electron shell, secure preload and typed IPC, SQLite + Drizzle migrations, dashboard, project registration and persistence |
 | 2 | Project workspace, onboarding, Team Lead chat | **Complete** (merged into `main`) (verification caveats below) | Project page, onboarding lifecycle, discovery of CLAUDE.md and `.claude/`, Team Lead via Claude Agent SDK, session persistence and resume, streaming chat |
 | 3 | Tasks and orchestration | **Complete** (commit `7806cd5`; caveats below) | Task model, backlog UI, dependencies, validated state machine, Team Lead task tools (propose, user approves), persistent event history |
-| 4 | Developer agent runtime | **Implemented** (uncommitted; caveats below) | Claude Code CLI in node-pty, git worktrees, xterm.js terminals, agent persistence |
-| 5 | Planning and approval | **Implemented** (uncommitted; caveats below) | Plan capture and versioning, Team Lead review (advice), user approval records, backend-enforced execution gate |
-| 6 | Execution and review | **Implemented** (uncommitted; caveats below) | Gated execution, agent reports as claims plus Orbyte-collected git evidence, Team Lead result review (advice), user acceptance as the only completion path, change requests |
-| 7 | Reliability and polish | **Implemented, packaging deferred** (uncommitted; caveats below) | File logging, startup recovery sweep, orphan cleanup, database backup, two Phase 6 gaps closed. Packaging is **Planned** (deferred by decision: no builds for now) |
+| 4 | Developer agent runtime | **Implemented** (commit `a18cf97`; caveats below) | Claude Code CLI in node-pty, git worktrees, xterm.js terminals, agent persistence |
+| 5 | Planning and approval | **Implemented** (commit `8fee9c3`; caveats below) | Plan capture and versioning, Team Lead review (advice), user approval records, backend-enforced execution gate |
+| 6 | Execution and review | **Implemented** (commit `b8ad426`; caveats below) | Gated execution, agent reports as claims plus Orbyte-collected git evidence, Team Lead result review (advice), user acceptance as the only completion path, change requests |
+| 7 | Reliability and polish | **Implemented, packaging deferred** (commit `3b17711`; caveats below) | File logging, startup recovery sweep, orphan cleanup, database backup, two Phase 6 gaps closed. Packaging is **Planned** (deferred by decision: no builds for now) |
 
 ## Phase 1 acceptance (met, with caveats)
 App launches; project registered by token flow and persisted (tested at service/DB level); renderer isolated (verified over DevTools protocol). Caveat: the native folder dialog was not exercised end-to-end.
