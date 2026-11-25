@@ -1,5 +1,5 @@
 import { IPC } from '@shared/constants/ipc'
-import { acceptResultInputSchema, requestChangesInputSchema, requestResultReviewInputSchema, runTestsInputSchema, startExecutionInputSchema, testRunsInputSchema } from '@shared/schemas/execution'
+import { acceptResultInputSchema, requestChangesInputSchema, requestResultReviewInputSchema, resultChangesInputSchema, runTestsInputSchema, startExecutionInputSchema, testRunsInputSchema } from '@shared/schemas/execution'
 import { planTaskInputSchema } from '@shared/schemas/plan'
 import type { CompletionService } from '../modules/orchestration/completion-service'
 import type { ExecutionService } from '../modules/orchestration/execution-service'
@@ -14,6 +14,7 @@ import { handle } from './handle'
  */
 export function registerExecutionHandlers(deps: { execution: ExecutionService; completion: CompletionService; resultReviews: ResultReviewService; testRuns: TestRunService }): void {
   const { execution, completion, resultReviews, testRuns } = deps
+  handle(IPC.executions.changes, resultChangesInputSchema, ({ projectId, taskId, resultId }) => completion.changes(projectId, taskId, resultId))
   handle(IPC.executions.runTests, runTestsInputSchema, ({ projectId, taskId, resultId }) => testRuns.start(projectId, taskId, resultId))
   handle(IPC.executions.testRuns, testRunsInputSchema, ({ projectId, taskId }) => testRuns.list(projectId, taskId))
   handle(IPC.executions.start, startExecutionInputSchema, ({ projectId, taskId }) => execution.start(projectId, taskId))

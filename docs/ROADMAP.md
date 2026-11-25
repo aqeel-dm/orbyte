@@ -56,7 +56,7 @@ Not verified: the native save dialog for the database backup (the backup itself 
 ## Follow-up live check (after Phase 7)
 Run in the built app with a real `claude` agent and the real Team Lead against a scratch repository, with screenshots of the real UI: the dashboard, Maintenance panel, project tabs, plan dialog (Approve and Reject are reachable by scrolling inside the dialog) and result dialog (the agent's claim labelled unverified, git evidence labelled collected by Orbyte, Team Lead's output labelled advice) render correctly; Approve and Start execution were clicked in the UI. An execution agent hit a real Bash permission prompt (`node -e ...`); Orbyte did not answer it and the agent waited until a person did. Then a revision run was started and the Electron main process was killed with `kill -9`: the agent process did not survive, and on relaunch the startup recovery logged one interrupted agent and one interrupted run, the task returned to `awaiting_approval`, the worktree and the agent's file were kept, and `executions.start` was refused (`EXECUTION_NOT_AUTHORIZED`) until a new approval. Agent start now re-validates the project folder (`GitWorktrees.verifyRepo`).
 
-Observed limitation, since fixed: for a new, untracked file the evidence listed the file with no line counts, so the Team Lead had to read it itself. The snapshot now counts the lines of small new text files (binary files, links and files over 1 MB stay uncounted). The diff text itself is still not stored or shown.
+Observed limitation, since fixed: for a new, untracked file the evidence listed the file with no line counts, so the Team Lead had to read it itself. The snapshot now counts the lines of small new text files (binary files, links and files over 1 MB stay uncounted). The diff text is not stored; it can be shown on demand (see below).
 
 ## Follow-up: Orbyte-run tests
 The result dialog can run the task's `package.json` test script in the agent's worktree (migration 0007). Covered by 317 automated tests with real processes and git; not yet checked in the running UI. Limits are in `SECURITY.md` (executes agent code as you; fresh worktrees lack installed dependencies).
@@ -72,6 +72,9 @@ Planning agents' terminals refuse input that starts a line with `!` (`input-guar
 
 ## Follow-up: error screen
 A render error in a screen now shows a recoverable error card (sidebar kept, Reload and Go to dashboard) instead of a blank window (`components/route-error.tsx`, router `errorElement`). Checked in the real app by loading a proposal with malformed items (the card appeared; Go to dashboard recovered). It catches render errors only, not failed async calls or errors in event handlers, and has no automated test (no UI test setup).
+
+## Follow-up: diff in the result dialog
+"Show the changes" in the result dialog displays the tracked diff and new files' content, fetched on demand and never stored (338 tests; not yet seen in a running app with a real result). Capped at 60,000 characters.
 
 ## Open items after Phase 7
 `repoPath` re-validation for the Team Lead and later worktree operations (agent start now re-validates); how to treat the `!` shell-mode gap; packaging (**Planned**, deferred): `asarUnpack` for the SDK binary, `node-pty` and the agent server, Electron Fuses, signing.

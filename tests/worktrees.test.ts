@@ -158,3 +158,37 @@ describe('snapshot of untracked files', () => {
     expect(after.files.find((f) => f.path === 'three.txt')?.additions).toBe(4)
   })
 })
+
+describe('changesText', () => {
+  it('shows tracked edits and new files, and only names binaries, big files, links and bad paths', async () => {
+    const repo = makeGitRepo(); const w = new GitWorktrees(); const base = await w.resolveBase(repo, 'main')
+    const wt = join(tempDir(), 'wt')
+    await w.add(repo, wt, 'orbyte/changes-1234abcd', base)
+    const tracked = execFileSync('git', ['-C', wt, 'ls-files'], { encoding: 'utf8' }).split('\n').filter(Boolean)[0]!
+    writeFileSync(join(wt, tracked), 'edited line\n')
+    writeFileSync(join(wt, 'new.ts'), 'export const a = 1\nexport const b = 2\n')
+    writeFileSync(join(wt, 'bin.dat'), Buffer.from([1, 0, 2]))
+    writeFileSync(join(wt, 'big.txt'), 'x'.repeat(300 * 1024))
+    const outside = join(tempDir(), 'secret.txt'); writeFileSync(outside, 'TOPSECRET')
+    symlinkSync(outside, join(wt, 'link.txt'))
+    const out = await w.changesText(wt, base, ['new.ts', 'bin.dat', 'big.txt', 'link.txt', '../escape', '/etc/passwd', 'missing.ts'])
+    expect(out.text).toContain('+edited line')
+    expect(out.text).toContain('+++ b/new.ts')
+    expect(out.text).toContain('+export const b = 2')
+    expect(out.text).toContain('(new binary file)')
+    expect(out.text).toContain('too large to show')
+    expect(out.text).not.toContain('TOPSECRET')
+    expect((out.text.match(/not shown: not a plain file/g) ?? []).length).toBe(4) // link, ../escape, /etc/passwd, missing
+    expect(out.truncated).toBe(false)
+  })
+
+  it('caps its output', async () => {
+    const repo = makeGitRepo(); const w = new GitWorktrees(); const base = await w.resolveBase(repo, 'main')
+    const wt = join(tempDir(), 'wt')
+    await w.add(repo, wt, 'orbyte/cap-1234abcd', base)
+    writeFileSync(join(wt, 'a.txt'), 'line\n'.repeat(5000))
+    const out = await w.changesText(wt, base, ['a.txt'], 2000)
+    expect(out.text.length).toBeLessThanOrEqual(2000)
+    expect(out.truncated).toBe(true)
+  })
+})

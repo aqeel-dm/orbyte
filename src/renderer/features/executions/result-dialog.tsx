@@ -20,6 +20,7 @@ export function ResultDialog({ projectId, repoPath, task, open, onOpenChange }: 
   const [actionError, setActionError] = useState<string | null>(null)
   const [asking, setAsking] = useState(false)
   const [feedback, setFeedback] = useState('')
+  const [changes, setChanges] = useState<{ text: string; truncated: boolean } | { error: string } | 'loading' | null>(null)
 
   const result = bundle?.results[0]
   const review = bundle?.reviews.find((r) => r.resultId === result?.id)
@@ -34,6 +35,12 @@ export function ResultDialog({ projectId, repoPath, task, open, onOpenChange }: 
     if (!res.ok) return setActionError(res.error?.message ?? 'Something went wrong.')
     setAsking(false); setFeedback('')
     void refresh()
+  }
+
+  async function showChanges(resultId: string) {
+    setChanges('loading')
+    const res = await window.orbyte.executions.changes(projectId, task.id, resultId)
+    setChanges(res.ok ? res.data : { error: res.error.message })
   }
 
   async function accept() {
@@ -80,6 +87,21 @@ export function ResultDialog({ projectId, repoPath, task, open, onOpenChange }: 
                     <ul className="mt-2 space-y-0.5 text-sm">{result.evidence.files.map((f) => <li key={f.path} className="break-all"><span className="text-xs text-muted-foreground">{f.status} </span>{f.path}{f.additions !== null && <span className="text-xs text-muted-foreground"> +{f.additions} −{f.deletions}</span>}</li>)}</ul>
                   )}
                   {result.evidence.truncated && <p className="mt-1 text-xs text-muted-foreground">The list was truncated.</p>}
+                  {result.evidence.files.length > 0 && !result.evidence.truncated && (
+                    <div className="mt-2">
+                      {changes === null ? <Button size="sm" variant="outline" onClick={() => void showChanges(result.id)}>Show the changes</Button>
+                        : changes === 'loading' ? <p className="text-xs text-muted-foreground">Loading…</p>
+                        : 'error' in changes ? <p role="alert" className="text-xs text-destructive">{changes.error}</p>
+                        : (
+                          <>
+                            <pre className="max-h-96 overflow-auto rounded bg-muted p-2 text-xs leading-snug" aria-label="Code changes">
+                              {changes.text.split('\n').map((l, n) => <div key={n} className={l.startsWith('+') && !l.startsWith('+++') ? 'text-success' : l.startsWith('-') && !l.startsWith('---') ? 'text-destructive' : l.startsWith('@@') ? 'text-primary' : ''}>{l || ' '}</div>)}
+                            </pre>
+                            {changes.truncated && <p className="mt-1 text-xs text-muted-foreground">Shown in part: the changes are larger than the viewer's limit.</p>}
+                          </>
+                        )}
+                    </div>
+                  )}
                 </Card>
 
                 <Card className="p-3">

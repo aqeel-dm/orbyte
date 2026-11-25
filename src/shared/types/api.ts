@@ -1,7 +1,7 @@
 import type { DiscoveryResult } from '../schemas/onboarding'
 import type { ListProjectsInput, PickDirectoryResult, Project, RegisterProjectInput } from '../schemas/project'
 import type { AppEvent, ChatMessage, SendMessageResult, TeamLeadSummary } from '../schemas/team-lead'
-import type { ExecutionBundle, ResultDecision, TestRun } from '../schemas/execution'
+import type { ExecutionBundle, ResultChanges, ResultDecision, TestRun } from '../schemas/execution'
 import type { PlanApproval, PlanBundle } from '../schemas/plan'
 import type { AgentSummary, AttachResult, DeveloperAgent, TerminalEvent } from '../schemas/agent'
 import type { ActivityEvent, DecisionItem, RecentActivityEvent, CreateTaskInput, ProposalItem, Task, TaskProposal, TaskSummary, UpdateTaskInput } from '../schemas/task'
@@ -101,6 +101,8 @@ export interface OrbyteApi {
     /** Sends the task back to an execution agent with your feedback. */
     requestChanges(projectId: string, taskId: string, resultId: string, feedback: string): Promise<Result<DeveloperAgent>>
     /** Runs the project's own test script (found by Orbyte in package.json) in the agent's worktree, against the current unchanged result. Output is recorded as collected by Orbyte. */
+    /** The code changes of a result as text (tracked diff plus new files), read fresh from the worktree and refused if the code no longer matches the result. */
+    changes(projectId: string, taskId: string, resultId: string): Promise<Result<ResultChanges>>
     runTests(projectId: string, taskId: string, resultId: string): Promise<Result<TestRun>>
     testRuns(projectId: string, taskId: string): Promise<Result<TestRun[]>>
     /** Asks the Team Lead (re)review the current result. Advice only. */

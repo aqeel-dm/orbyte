@@ -98,6 +98,21 @@ describe('execution', () => {
     expect(c.exec.listRuns(c.task.id)[0]?.status).toBe('result_submitted')
   })
 
+  it('shows the changes of a result only for the right project and only while the code matches', async () => {
+    const c = await approved()
+    const agent = await c.execution.start(c.s.project.id, c.task.id)
+    await agentFinishes(c, agent.id, 1, 'login.ts', 'export const login = 1\n')
+    const { id: pid } = c.s.project
+    const result = c.exec.latestResult(c.task.id)!
+    const shown = await c.completion.changes(pid, c.task.id, result.id)
+    expect(shown.text).toContain('+++ b/login.ts')
+    expect(shown.text).toContain('+export const login = 1')
+    expect(await code(() => c.completion.changes('nope', c.task.id, result.id))).toBe('NOT_FOUND')
+    expect(await code(() => c.completion.changes(pid, c.task.id, 'nope'))).toBe('NOT_FOUND')
+    writeFileSync(join(c.s.pty.procs[1]!.opts.cwd, 'login.ts'), 'export const login = 2\n')
+    expect(await code(() => c.completion.changes(pid, c.task.id, result.id))).toBe('CODE_CHANGED')
+  })
+
   it('completion needs a Team Lead review, the user, and unchanged code', async () => {
     const c = await approved()
     const agent = await c.execution.start(c.s.project.id, c.task.id)

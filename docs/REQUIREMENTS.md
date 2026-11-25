@@ -157,4 +157,4 @@ Made by the user while building (answers to questions, or direct instructions):
 
 ## Open items
 
-the `!` shell-mode gap in execution agents (planning agents have a best-effort guard); re-validating `repoPath` for the Team Lead and later worktree operations; the evidence shows line counts but not the diff text itself; Playwright tests; integration adapters; packaging. Each is also tracked in `ROADMAP.md` or `SECURITY.md`.
+the `!` shell-mode gap in execution agents (planning agents have a best-effort guard); re-validating `repoPath` for the Team Lead and later worktree operations; Playwright tests; integration adapters; packaging. Each is also tracked in `ROADMAP.md` or `SECURITY.md`.

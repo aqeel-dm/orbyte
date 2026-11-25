@@ -223,7 +223,46 @@ export class GitWorktrees {
     return out.length > maxChars ? { text: out.slice(0, maxChars), truncated: true } : { text: out, truncated: false }
   }
 
-  /** Content hash of one untracked file. A symlink hashes its target path (it is never followed). Very large files hash their size. */
+  /**
+   * What changed, as text for the person deciding: the diff of tracked files plus the content of new untracked
+   * files (the agent does not commit, so new files are untracked). `untracked` are paths from Orbyte's own
+   * snapshot, but each is still checked to be a plain file inside the worktree. Binary and large files are named,
+   * not shown. Capped.
+   */
+  async changesText(worktreePath: string, baseCommit: string, untracked: string[], maxChars = 60_000): Promise<{ text: string; truncated: boolean }> {
+    const tracked = await this.diffText(worktreePath, baseCommit, maxChars)
+    let text = tracked.text
+    let truncated = tracked.truncated
+    let root: string
+    try { root = await realpath(worktreePath) } catch { return { text, truncated } }
+    for (const rel of untracked.slice(0, 50)) {
+      if (text.length >= maxChars) { truncated = true; break }
+      const header = `\n--- /dev/null\n+++ b/${rel}\n`
+      let body = '(not shown: not a plain file inside the worktree)\n'
+      try {
+        if (rel && !rel.startsWith('/') && !rel.includes('\0') && !rel.split('/').includes('..')) {
+          const abs = join(worktreePath, rel)
+          const st = await lstat(abs)
+          if (st.isFile() && isInside(root, await realpath(abs))) {
+            if (st.size > 256 * 1024) body = '(new file, too large to show)\n'
+            else {
+              const data = await readFile(abs)
+              if (data.subarray(0, 8192).includes(0)) body = '(new binary file)\n'
+              else {
+                const lines = data.toString('utf8').split('\n')
+                if (lines[lines.length - 1] === '') lines.pop()
+                body = `@@ new file, ${lines.length} line(s) @@\n${lines.map((l) => `+${l}`).join('\n')}\n`
+              }
+            }
+          }
+        }
+      } catch { /* leave the "not shown" note */ }
+      text += header + body
+    }
+    if (text.length > maxChars) { text = text.slice(0, maxChars); truncated = true }
+    return { text, truncated }
+  }
+
   /** Number of lines in a small regular text file, or null for anything else (a link, a binary, a large file). */
   private async countNewLines(path: string): Promise<number | null> {
     try {
@@ -240,6 +279,7 @@ export class GitWorktrees {
     }
   }
 
+  /** Content hash of one untracked file. A symlink hashes its target path (it is never followed). Very large files hash their size. */
   private async fileDigest(path: string): Promise<string> {
     try {
       const st = await lstat(path)

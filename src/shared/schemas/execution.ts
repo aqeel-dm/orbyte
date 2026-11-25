@@ -129,8 +129,11 @@ export const testRunSchema = z.object({
   startedAt: z.number(),
   endedAt: z.number().nullable()
 })
+export const resultChangesSchema = z.object({ text: z.string(), truncated: z.boolean() })
+export const resultChangesInputSchema = z.object({ projectId: id, taskId: id, resultId: id })
 export const runTestsInputSchema = z.object({ projectId: id, taskId: id, resultId: id })
 export const testRunsInputSchema = z.object({ projectId: id, taskId: id })
+export type ResultChanges = z.infer<typeof resultChangesSchema>
 export type TestRun = z.infer<typeof testRunSchema>
 
 export type ReportedTest = z.infer<typeof reportedTestSchema>

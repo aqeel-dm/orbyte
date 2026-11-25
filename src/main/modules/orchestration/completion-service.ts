@@ -1,5 +1,5 @@
 import { AppError } from '@shared/types/result'
-import type { CompletionGate, Evidence, ExecutionBundle, ExecutionResult, ResultDecision } from '@shared/schemas/execution'
+import type { CompletionGate, Evidence, ExecutionBundle, ExecutionResult, ResultChanges, ResultDecision } from '@shared/schemas/execution'
 import type { AppEvent } from '@shared/schemas/team-lead'
 import type { Task } from '@shared/schemas/task'
 import type { AgentRepository } from '../agents/developers/agent-repository'
@@ -27,7 +27,7 @@ export class CompletionService {
       tasks: Pick<TaskService, 'transitionSystem'>
       exec: ExecutionRepository
       agents: Pick<AgentRepository, 'get'>
-      worktrees: Pick<GitWorktrees, 'snapshot'>
+      worktrees: Pick<GitWorktrees, 'snapshot' | 'changesText'>
       emit: (event: AppEvent) => void
       reviewInProgress?: (resultId: string) => boolean
     }
@@ -48,6 +48,24 @@ export class CompletionService {
       decisions: this.deps.exec.listDecisions(taskId),
       gate: this.gate(task, fresh),
       reviewInProgress: latest ? (this.deps.reviewInProgress?.(latest.id) ?? false) : false
+    }
+  }
+
+  /** The code changes of a result, for the person deciding. Read-only: shown only while the code is exactly what the result recorded. */
+  async changes(projectId: string, taskId: string, resultId: string): Promise<ResultChanges> {
+    this.requireTask(projectId, taskId)
+    const result = this.deps.exec.getResult(resultId)
+    if (!result || result.taskId !== taskId || result.projectId !== projectId) throw new AppError('NOT_FOUND', 'Result not found.')
+    const agent = this.deps.agents.get(result.agentId)
+    if (!agent || agent.worktreeRemoved) throw new AppError('WORKTREE_FAILED', "The agent's worktree is gone, so the changes can no longer be shown.")
+    const fresh = await this.freshEvidence(taskId)
+    if (!fresh) throw new AppError('WORKTREE_FAILED', "The agent's worktree could not be inspected.")
+    if (fresh.snapshotHash !== result.evidence.snapshotHash) throw new AppError('CODE_CHANGED', 'The code changed after this result was submitted, so it no longer matches what was recorded.')
+    const untracked = fresh.files.filter((f) => f.status === '?').map((f) => f.path)
+    try {
+      return await this.deps.worktrees.changesText(agent.worktreePath, agent.baseCommit, untracked)
+    } catch {
+      throw new AppError('WORKTREE_FAILED', "The agent's worktree could not be inspected.")
     }
   }
 
