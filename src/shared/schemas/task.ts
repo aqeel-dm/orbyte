@@ -111,6 +111,19 @@ export const activityEventSchema = z.object({
   createdAt: z.number()
 })
 
+export const decisionsListInputSchema = z.object({ projectId: id.optional() })
+/** Something only the user can decide: approve or dismiss proposed tasks, approve a plan, or accept a result. */
+export const decisionItemSchema = z.object({
+  kind: z.enum(['proposal', 'plan', 'result']),
+  projectId: z.string(),
+  projectName: z.string(),
+  /** null for a proposal (it is not a task yet). */
+  taskId: z.string().nullable(),
+  title: z.string(),
+  /** When it started waiting for you. */
+  since: z.number()
+})
+
 export const recentActivityInputSchema = z.object({ limit: z.number().int().min(1).max(100).optional() })
 /** An event from any active project; `projectName` is null for app-wide events such as startup recovery. */
 export const recentActivityEventSchema = activityEventSchema.extend({
@@ -127,6 +140,7 @@ export type TaskProposal = z.infer<typeof proposalSchema>
 export type ProposeTasksInput = z.infer<typeof proposeTasksInputSchema>
 export type CreateTaskInput = z.input<typeof createTaskInputSchema>
 export type UpdateTaskInput = z.input<typeof updateTaskInputSchema>
+export type DecisionItem = z.infer<typeof decisionItemSchema>
 export type ActivityEvent = z.infer<typeof activityEventSchema>
 export type RecentActivityEvent = z.infer<typeof recentActivityEventSchema>
 export type TaskSummary = z.infer<typeof taskSummarySchema>

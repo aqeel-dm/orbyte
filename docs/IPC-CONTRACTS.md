@@ -32,6 +32,7 @@ Invoke channels (renderer to main), defined in `src/shared/constants/ipc.ts`; th
 | `proposals.approve(projectId, proposalId, items)` | `proposals:approve` | `{projectId, proposalId, items: ProposalItem[] (1-20)}` | `Task[]` created. The only way a Team Lead suggestion becomes tasks |
 | `proposals.dismiss(projectId, proposalId)` | `proposals:dismiss` | `{projectId, proposalId}` | `TaskProposal` |
 | `activity.list(projectId, limit?)` | `activity:list` | `{projectId, limit (1-200)}` | `ActivityEvent[]`, newest first |
+| `decisions.list(projectId?)` | `decisions:list` | `{projectId?}` | `DecisionItem[]` (`kind` is `proposal`, `plan` or `result`; project, optional task, title, `since`), longest-waiting first. Read-only: pending task proposals, tasks whose plan awaits your decision, tasks in review; active projects only. Unknown project: `NOT_FOUND` |
 | `activity.listRecent(limit?)` | `activity:listRecent` | `{limit (1-100)}` | `RecentActivityEvent[]` (event plus `projectId` and `projectName`), newest first, across active projects; app-wide events (no project, such as `recovery.completed`) have both null; archived projects are left out |
 
 | `agents.list(projectId)` | `agents:list` | `{projectId}` | `DeveloperAgent[]` (no session id, base commit or pid) |

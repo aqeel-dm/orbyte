@@ -4,7 +4,7 @@ import type { AppEvent, ChatMessage, SendMessageResult, TeamLeadSummary } from '
 import type { ExecutionBundle, ResultDecision } from '../schemas/execution'
 import type { PlanApproval, PlanBundle } from '../schemas/plan'
 import type { AgentSummary, AttachResult, DeveloperAgent, TerminalEvent } from '../schemas/agent'
-import type { ActivityEvent, RecentActivityEvent, CreateTaskInput, ProposalItem, Task, TaskProposal, TaskSummary, UpdateTaskInput } from '../schemas/task'
+import type { ActivityEvent, DecisionItem, RecentActivityEvent, CreateTaskInput, ProposalItem, Task, TaskProposal, TaskSummary, UpdateTaskInput } from '../schemas/task'
 import type { BackupResult, CleanOrphansResult, MaintenanceScan } from '../schemas/maintenance'
 import type { TaskStatus } from '../task-state'
 import type { Result } from './result'
@@ -48,6 +48,10 @@ export interface OrbyteApi {
     /** Creates the given (possibly edited, possibly partial) tasks from a pending proposal. */
     approve(projectId: string, proposalId: string, items: ProposalItem[]): Promise<Result<Task[]>>
     dismiss(projectId: string, proposalId: string): Promise<Result<TaskProposal>>
+  }
+  decisions: {
+    /** Everything waiting for you (optionally for one project), longest-waiting first. Read-only. */
+    list(projectId?: string): Promise<Result<DecisionItem[]>>
   }
   activity: {
     list(projectId: string, limit?: number): Promise<Result<ActivityEvent[]>>

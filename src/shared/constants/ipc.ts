@@ -31,6 +31,9 @@ export const IPC = {
     approve: 'proposals:approve',
     dismiss: 'proposals:dismiss'
   },
+  decisions: {
+    list: 'decisions:list'
+  },
   activity: {
     list: 'activity:list',
     listRecent: 'activity:listRecent'

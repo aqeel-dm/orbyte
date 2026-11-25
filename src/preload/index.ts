@@ -37,6 +37,9 @@ const api: OrbyteApi = {
     approve: (projectId, proposalId, items) => ipcRenderer.invoke(IPC.proposals.approve, { projectId, proposalId, items }),
     dismiss: (projectId, proposalId) => ipcRenderer.invoke(IPC.proposals.dismiss, { projectId, proposalId })
   },
+  decisions: {
+    list: (projectId) => ipcRenderer.invoke(IPC.decisions.list, { projectId })
+  },
   activity: {
     list: (projectId, limit) => ipcRenderer.invoke(IPC.activity.list, { projectId, limit }),
     listRecent: (limit) => ipcRenderer.invoke(IPC.activity.listRecent, { limit })

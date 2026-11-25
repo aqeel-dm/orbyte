@@ -2,6 +2,7 @@ import { IPC } from '@shared/constants/ipc'
 import {
   activityListInputSchema,
   recentActivityInputSchema,
+  decisionsListInputSchema,
   approveProposalInputSchema,
   createTaskInputSchema,
   dismissProposalInputSchema,
@@ -10,6 +11,7 @@ import {
   updateTaskInputSchema
 } from '@shared/schemas/task'
 import type { ProposalService } from '../modules/orchestration/proposal-service'
+import type { DecisionRepository } from '../modules/orchestration/decision-repository'
 import type { ActivityRepository } from '../modules/projects/activity-repository'
 import type { ProjectService } from '../modules/projects/service'
 import type { TaskService } from '../modules/tasks/service'
@@ -19,9 +21,10 @@ export function registerTaskHandlers(deps: {
   tasks: TaskService
   proposals: ProposalService
   activity: ActivityRepository
+  decisions: DecisionRepository
   projects: Pick<ProjectService, 'get'>
 }): void {
-  const { tasks, proposals, activity, projects } = deps
+  const { tasks, proposals, activity, decisions, projects } = deps
 
   handle(IPC.tasks.list, projectScopedInputSchema, ({ projectId }) => tasks.list(projectId))
   handle(IPC.tasks.create, createTaskInputSchema, (input) => tasks.create(input))
@@ -37,6 +40,10 @@ export function registerTaskHandlers(deps: {
   handle(IPC.activity.list, activityListInputSchema, ({ projectId, limit }) => {
     projects.get(projectId) // throws NOT_FOUND for an unknown project
     return activity.list(projectId, limit)
+  })
+  handle(IPC.decisions.list, decisionsListInputSchema, ({ projectId }) => {
+    if (projectId) projects.get(projectId) // throws NOT_FOUND for an unknown project
+    return decisions.list(projectId)
   })
   handle(IPC.activity.listRecent, recentActivityInputSchema, ({ limit }) => activity.listRecent(limit))
 }

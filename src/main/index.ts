@@ -35,6 +35,7 @@ import { ReviewService } from './modules/orchestration/review-service'
 import { setTrustedAppEntry } from './ipc/handle'
 import { registerProjectHandlers } from './ipc/projects'
 import { registerTaskHandlers } from './ipc/tasks'
+import { DecisionRepository } from './modules/orchestration/decision-repository'
 import { ProposalRepository } from './modules/orchestration/proposal-repository'
 import { ProposalService } from './modules/orchestration/proposal-service'
 import { ActivityRepository } from './modules/projects/activity-repository'
@@ -200,7 +201,7 @@ async function bootstrap(): Promise<void> {
   registerPlanHandlers({ approvals, reviews })
   registerExecutionHandlers({ execution, completion, resultReviews })
   registerMaintenanceHandlers({ maintenance })
-  registerTaskHandlers({ tasks: taskService, proposals: proposalService, activity: new ActivityRepository(dbHandle.db), projects: projectService })
+  registerTaskHandlers({ tasks: taskService, proposals: proposalService, activity: new ActivityRepository(dbHandle.db), decisions: new DecisionRepository(dbHandle.db), projects: projectService })
   registerProjectHandlers({
     projects: projectService,
     onboarding,

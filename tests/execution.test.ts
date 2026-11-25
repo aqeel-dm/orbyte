@@ -57,6 +57,8 @@ async function agentFinishes(c: Ctx, agentId: string, procIndex: number, file = 
   writeFileSync(join(c.s.inbox.dirFor(agentId), `result-${Date.now()}-a.json`), JSON.stringify({ result: { summary: 'Added login', tests: [{ command: 'pnpm test', passed: true }] } }))
   proc.exit(0)
   await waitFor(() => c.s.taskRepo.get(c.task.id)?.status === 'in_review' || c.s.taskRepo.get(c.task.id)?.status === 'awaiting_approval')
+  // The task moves before the exit handler finishes marking the agent stopped: wait for that too, or the next call races it.
+  await waitFor(() => !c.s.agentRepo.activeForTask(c.task.id))
 }
 const review = (c: Ctx) => {
   const result = c.exec.latestResult(c.task.id)!

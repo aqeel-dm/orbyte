@@ -8,6 +8,8 @@ import type { TaskSummary } from '@shared/schemas/task'
 import type { TeamLeadSummary } from '@shared/schemas/team-lead'
 import { MaintenancePanel } from '@/features/maintenance/maintenance-panel'
 import { ProjectCard } from '@/features/projects/project-card'
+import { DecisionList } from '@/features/projects/decision-list'
+import { useDecisions } from '@/hooks/use-decisions'
 import { RecentActivity } from '@/features/projects/recent-activity'
 import { RegisterProjectDialog } from '@/features/projects/register-project-dialog'
 
@@ -38,6 +40,7 @@ export function DashboardPage() {
     load()
     return window.orbyte.onEvent((e) => { if (e.type === 'tasks_changed' || e.type === 'project_updated' || e.type === 'agent_changed' || e.type === 'turn_started' || e.type === 'turn_completed' || e.type === 'turn_error') load() })
   }, [])
+  const waiting = useDecisions()
   const [actionError, setActionError] = useState<string | null>(null)
 
   async function archive(p: Project) {
@@ -68,8 +71,10 @@ export function DashboardPage() {
         <Stat label="Team Leads" value={leads?.ready ?? '—'} note={leads ? `${leads.working} working now` : undefined} />
         <Stat label="Open tasks" value={summary?.open ?? '—'} note={summary ? `${summary.byStatus['in_progress'] ?? 0} in progress` : undefined} />
         <Stat label="Developer agents" value={running ?? '—'} note="running now" />
-        <Stat label="Pending approvals" value={summary ? (summary.byStatus['awaiting_approval'] ?? 0) + (summary.byStatus['in_review'] ?? 0) : '—'} note="plans and results awaiting you" />
+        <Stat label="Pending approvals" value={waiting ? waiting.length : '—'} note="proposals, plans and results awaiting you" />
       </section>
+
+      <div className="mt-6"><DecisionList /></div>
 
       <div className="mb-3 mt-8 flex items-center justify-between">
         <h2 className="text-sm font-medium text-muted-foreground">Projects</h2>
