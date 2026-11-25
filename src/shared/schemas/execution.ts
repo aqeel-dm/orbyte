@@ -115,6 +115,24 @@ export const acceptResultInputSchema = z.object({ projectId: id, taskId: id, res
 export const requestResultReviewInputSchema = z.object({ projectId: id, taskId: id, resultId: id })
 export const requestChangesInputSchema = z.object({ projectId: id, taskId: id, resultId: id, feedback: z.string().trim().min(1, 'Feedback is required').max(2000) })
 
+/** Tests Orbyte ran itself, in the agent's worktree, against the code snapshot of one result. */
+export const testRunSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  taskId: z.string(),
+  resultId: z.string(),
+  snapshotHash: z.string(),
+  command: z.string(),
+  status: z.enum(['running', 'passed', 'failed', 'timed_out', 'error']),
+  exitCode: z.number().nullable(),
+  output: z.string(),
+  startedAt: z.number(),
+  endedAt: z.number().nullable()
+})
+export const runTestsInputSchema = z.object({ projectId: id, taskId: id, resultId: id })
+export const testRunsInputSchema = z.object({ projectId: id, taskId: id })
+export type TestRun = z.infer<typeof testRunSchema>
+
 export type ReportedTest = z.infer<typeof reportedTestSchema>
 export type SubmittedResult = z.infer<typeof submittedResultSchema>
 export type Evidence = z.infer<typeof evidenceSchema>

@@ -300,3 +300,24 @@ export const resultDecisions = sqliteTable(
     uniqueIndex('decisions_one_valid_acceptance').on(t.taskId).where(sql`${t.decision} = 'accepted' and ${t.invalidatedAt} is null`)
   ]
 )
+
+/** Tests Orbyte itself ran in an agent's worktree, bound to the result and code snapshot they ran against. */
+export const testRuns = sqliteTable(
+  'test_runs',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    taskId: text('task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+    resultId: text('result_id').notNull().references(() => executionResults.id, { onDelete: 'cascade' }),
+    snapshotHash: text('snapshot_hash').notNull(),
+    /** Display form of what ran, e.g. "pnpm run test". Chosen by Orbyte from package.json, never typed by the renderer. */
+    command: text('command').notNull(),
+    status: text('status', { enum: ['running', 'passed', 'failed', 'timed_out', 'error'] }).notNull(),
+    exitCode: integer('exit_code'),
+    /** Last part of the combined output, size-capped. */
+    output: text('output').notNull().default(''),
+    startedAt: integer('started_at').notNull().default(now),
+    endedAt: integer('ended_at')
+  },
+  (t) => [index('test_runs_task_idx').on(t.taskId, t.startedAt)]
+)

@@ -58,5 +58,8 @@ Run in the built app with a real `claude` agent and the real Team Lead against a
 
 Observed limitation, since fixed: for a new, untracked file the evidence listed the file with no line counts, so the Team Lead had to read it itself. The snapshot now counts the lines of small new text files (binary files, links and files over 1 MB stay uncounted). The diff text itself is still not stored or shown.
 
+## Follow-up: Orbyte-run tests
+The result dialog can run the task's `package.json` test script in the agent's worktree (migration 0007). Covered by 317 automated tests with real processes and git; not yet checked in the running UI. Limits are in `SECURITY.md` (executes agent code as you; fresh worktrees lack installed dependencies).
+
 ## Open items after Phase 7
-Deciding whether approval and acceptance rows need signing; `repoPath` re-validation for the Team Lead and later worktree operations (agent start now re-validates); how to treat the `!` shell-mode gap; an Orbyte-run test command (not built by decision); packaging (**Planned**, deferred): `asarUnpack` for the SDK binary, `node-pty` and the agent server, Electron Fuses, signing.
+Deciding whether approval and acceptance rows need signing; `repoPath` re-validation for the Team Lead and later worktree operations (agent start now re-validates); how to treat the `!` shell-mode gap; packaging (**Planned**, deferred): `asarUnpack` for the SDK binary, `node-pty` and the agent server, Electron Fuses, signing.

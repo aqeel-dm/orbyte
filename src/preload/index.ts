@@ -65,7 +65,9 @@ const api: OrbyteApi = {
     get: (projectId, taskId) => ipcRenderer.invoke(IPC.executions.get, { projectId, taskId }),
     accept: (projectId, taskId, resultId) => ipcRenderer.invoke(IPC.executions.accept, { projectId, taskId, resultId }),
     requestChanges: (projectId, taskId, resultId, feedback) => ipcRenderer.invoke(IPC.executions.requestChanges, { projectId, taskId, resultId, feedback }),
-    requestReview: (projectId, taskId, resultId) => ipcRenderer.invoke(IPC.executions.requestReview, { projectId, taskId, resultId })
+    requestReview: (projectId, taskId, resultId) => ipcRenderer.invoke(IPC.executions.requestReview, { projectId, taskId, resultId }),
+    runTests: (projectId, taskId, resultId) => ipcRenderer.invoke(IPC.executions.runTests, { projectId, taskId, resultId }),
+    testRuns: (projectId, taskId) => ipcRenderer.invoke(IPC.executions.testRuns, { projectId, taskId })
   },
   plans: {
     get: (projectId, taskId) => ipcRenderer.invoke(IPC.plans.get, { projectId, taskId }),

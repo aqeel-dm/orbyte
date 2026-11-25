@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, Copy, Sparkles } from 'lucide-react'
+import { AlertTriangle, Check, Copy, Play, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import type { Task } from '@shared/schemas/task'
 import { Badge } from '@/components/ui/badge'
@@ -14,7 +14,7 @@ const REC_VARIANT = { approve: 'success', revise: 'warning', reject: 'destructiv
 const when = (t: number) => new Date(t).toLocaleString()
 
 export function ResultDialog({ projectId, repoPath, task, open, onOpenChange }: { projectId: string; repoPath: string; task: Task; open: boolean; onOpenChange: (open: boolean) => void }) {
-  const { bundle, error, refresh } = useExecution(projectId, task.id)
+  const { bundle, testRuns, error, refresh } = useExecution(projectId, task.id)
   const { agents } = useAgents(projectId)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -80,6 +80,27 @@ export function ResultDialog({ projectId, repoPath, task, open, onOpenChange }: 
                     <ul className="mt-2 space-y-0.5 text-sm">{result.evidence.files.map((f) => <li key={f.path} className="break-all"><span className="text-xs text-muted-foreground">{f.status} </span>{f.path}{f.additions !== null && <span className="text-xs text-muted-foreground"> +{f.additions} −{f.deletions}</span>}</li>)}</ul>
                   )}
                   {result.evidence.truncated && <p className="mt-1 text-xs text-muted-foreground">The list was truncated.</p>}
+                </Card>
+
+                <Card className="p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-sm font-medium">Tests Orbyte ran <Badge variant="success">collected by Orbyte</Badge></div>
+                    {result.status === 'current' && task.status === 'in_review' && (
+                      <Button size="sm" variant="outline" disabled={busy || testRuns[0]?.status === 'running' || gate.codeUnchanged === false}
+                        onClick={() => { if (window.confirm("Run this project's test script in the agent's worktree? It executes the agent's code on your machine, as you.")) void act(() => window.orbyte.executions.runTests(projectId, task.id, result.id)) }}>
+                        <Play className="h-3.5 w-3.5" />{testRuns[0]?.status === 'running' ? 'Running…' : 'Run tests'}
+                      </Button>
+                    )}
+                  </div>
+                  {testRuns.length === 0 ? <p className="mt-2 text-xs text-muted-foreground">Not run. Orbyte runs the <code>test</code> script from package.json if there is one. A fresh worktree has no installed dependencies, so tests may fail for that reason; the output below shows what happened.</p> : (
+                    <ul className="mt-2 space-y-2">{testRuns.slice(0, 3).map((t) => (
+                      <li key={t.id} className="text-sm">
+                        <span className="font-mono text-xs">{t.command}</span>{' '}
+                        <Badge variant={t.status === 'passed' ? 'success' : t.status === 'running' ? 'default' : 'destructive'}>{t.status === 'timed_out' ? 'timed out' : t.status}{t.exitCode !== null && t.status === 'failed' ? ` (exit ${t.exitCode})` : ''}</Badge>
+                        <span className="text-xs text-muted-foreground"> {when(t.startedAt)}{t.resultId !== result.id ? ' · an older result' : t.snapshotHash !== result.evidence.snapshotHash ? ' · different code' : ''}</span>
+                        {t.status !== 'running' && t.output && <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-2 text-xs">{t.output}</pre>}
+                      </li>))}</ul>
+                  )}
                 </Card>
 
                 {review ? (

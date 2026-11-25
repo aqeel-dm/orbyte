@@ -75,7 +75,7 @@ A local-first, single-user desktop app that coordinates Claude Code developer ag
 | W-6 | Execution: the agent implements, runs tests and reports; its terminal stays available | Met |
 | W-7 | The app keeps execution state independently of the agent's claims | Met: the agent's report is shown as an unverified claim; Orbyte collects git evidence itself |
 | W-8 | Completion only after review; never because the agent says it succeeded | Met: needs a Team Lead review of the current result, the user's acceptance and an unchanged code snapshot |
-| W-9 | Test results are collected | **Partial, by decision**: agent-reported results are labelled unverified; Orbyte does not run tests itself |
+| W-9 | Test results are collected | Met: agent-reported results are labelled unverified; you can have Orbyte run the project's `test` script in the worktree (labelled collected by Orbyte). Limits: only a `package.json` test script is detected, and a fresh worktree has no installed dependencies |
 | W-10 | State, history and activity are persisted and shown on the dashboard | Met |
 | W-11 | After you accept a result, Orbyte shows the commands to commit and merge it; it never runs them | Met (guidance only, built from the agent's recorded worktree and branch, single-quoted; not run against a real merge in the UI) |
 
@@ -148,7 +148,7 @@ Made by the user while building (answers to questions, or direct instructions):
 | A dependent task may be planned early, executed later | T-5 |
 | You accept completion, after a Team Lead review exists | TL-7, W-8 |
 | Commands that need approval ask in the terminal; Orbyte never answers them | W-6 |
-| Test results: agent report labelled unverified plus facts Orbyte collects; no Orbyte-run test command | W-9 |
+| Test results: agent report labelled unverified plus facts Orbyte collects. Later (item 4 of the follow-up list) an Orbyte-run test button was added | W-9 |
 | Signing of approvals deferred; document the limit | S-10 |
 | File logger; startup recovery, orphan cleanup and database backup in scope | L-3, L-4 |
 | No builds or packaging for now | E-5 |
@@ -156,4 +156,4 @@ Made by the user while building (answers to questions, or direct instructions):
 
 ## Open items
 
-Signing approval and acceptance rows; the `!` shell-mode gap; an Orbyte-run test command; re-validating `repoPath` for the Team Lead and later worktree operations; the evidence shows line counts but not the diff text itself; Playwright tests; integration adapters; packaging. Each is also tracked in `ROADMAP.md` or `SECURITY.md`.
+Signing approval and acceptance rows; the `!` shell-mode gap; re-validating `repoPath` for the Team Lead and later worktree operations; the evidence shows line counts but not the diff text itself; Playwright tests; integration adapters; packaging. Each is also tracked in `ROADMAP.md` or `SECURITY.md`.

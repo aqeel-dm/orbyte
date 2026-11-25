@@ -25,6 +25,7 @@ import { initLogging } from './logging/logger'
 import { MaintenanceService } from './modules/maintenance/service'
 import { CompletionService } from './modules/orchestration/completion-service'
 import { ExecutionRepository } from './modules/orchestration/execution-repository'
+import { TestRunService } from './modules/orchestration/test-run-service'
 import { ExecutionService } from './modules/orchestration/execution-service'
 import { ResultReviewService } from './modules/orchestration/result-review-service'
 import { AgentInbox } from './modules/agents/developers/agent-inbox'
@@ -50,6 +51,7 @@ import { log } from './logging/logger'
 let dbHandle: DbHandle | undefined
 let teamLeadService: TeamLeadService | undefined
 let agentService: AgentService | undefined
+let testRunsRef: { shutdown(): void } | undefined
 let quitting = false
 
 process.on('unhandledRejection', (reason) => log.error('[main] unhandled rejection', reason))
@@ -183,6 +185,9 @@ async function bootstrap(): Promise<void> {
     reviewInProgress: (resultId) => resultReviews.isInProgress(resultId)
   })
   completionRef = completion
+  const testRuns = new TestRunService({ db: dbHandle.db, projects: projectRepo, taskRepo, exec: execRepo, agents: agentRepo, worktrees, emit })
+  testRuns.recoverInterrupted()
+  testRunsRef = testRuns
   const interruptedRuns = execution.recoverInterrupted()
   const maintenance = new MaintenanceService({
     db: dbHandle.db,
@@ -199,7 +204,7 @@ async function bootstrap(): Promise<void> {
 
   registerAgentHandlers({ agents })
   registerPlanHandlers({ approvals, reviews })
-  registerExecutionHandlers({ execution, completion, resultReviews })
+  registerExecutionHandlers({ execution, completion, resultReviews, testRuns })
   registerMaintenanceHandlers({ maintenance })
   registerTaskHandlers({ tasks: taskService, proposals: proposalService, activity: new ActivityRepository(dbHandle.db), decisions: new DecisionRepository(dbHandle.db), projects: projectService })
   registerProjectHandlers({
@@ -238,6 +243,7 @@ else {
     quitting = true
     event.preventDefault()
     // Stop Team Lead turns and developer agent processes before the database closes.
+    testRunsRef?.shutdown()
     void Promise.allSettled([teamLeadService?.shutdown(), agentService?.shutdown()])
       .catch((err) => log.error('[main] shutdown failed', err))
       .finally(() => {

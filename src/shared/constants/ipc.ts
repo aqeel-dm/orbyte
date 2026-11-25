@@ -61,7 +61,9 @@ export const IPC = {
     get: 'executions:get',
     accept: 'executions:accept',
     requestChanges: 'executions:requestChanges',
-    requestReview: 'executions:requestReview'
+    requestReview: 'executions:requestReview',
+    runTests: 'executions:runTests',
+    testRuns: 'executions:testRuns'
   },
   maintenance: {
     scan: 'maintenance:scan',
