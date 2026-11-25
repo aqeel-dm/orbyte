@@ -114,7 +114,7 @@ A local-first, single-user desktop app that coordinates Claude Code developer ag
 | S-7 | Never fake agent, terminal, test or approval results | Met |
 | S-8 | Validate AI-generated structured output | Met (Zod) |
 | S-9 | Process crashes handled | Met |
-| S-10 | The approval gate holds against a process running as the user | **Partial**: approvals, acceptances and change requests are HMAC-signed with a Keychain-protected key (editing or inserting rows no longer works). A process that can use the same key, or replay an old signed row, is not stopped, and Claude Code's `!` shell mode can still run commands; documented in `SECURITY.md` |
+| S-10 | The approval gate holds against a process running as the user | **Partial**: approvals, acceptances and change requests are HMAC-signed with a Keychain-protected key (editing or inserting rows no longer works). A process that can use the same key, or replay an old signed row, is not stopped, and Claude Code's `!` shell mode can still run commands in execution agents (planning agents refuse `!` at a line start, best effort); documented in `SECURITY.md` |
 
 ## 10. Integrations (10)
 
@@ -157,4 +157,4 @@ Made by the user while building (answers to questions, or direct instructions):
 
 ## Open items
 
-the `!` shell-mode gap; re-validating `repoPath` for the Team Lead and later worktree operations; the evidence shows line counts but not the diff text itself; Playwright tests; integration adapters; packaging. Each is also tracked in `ROADMAP.md` or `SECURITY.md`.
+the `!` shell-mode gap in execution agents (planning agents have a best-effort guard); re-validating `repoPath` for the Team Lead and later worktree operations; the evidence shows line counts but not the diff text itself; Playwright tests; integration adapters; packaging. Each is also tracked in `ROADMAP.md` or `SECURITY.md`.

@@ -67,5 +67,8 @@ A main-process `Notifier` (`src/main/notifications/`) watches the app's change e
 ## Follow-up: signed approvals
 Approvals, acceptances and change requests are signed (migration 0008, `src/main/security/row-signer.ts`) and the gate ignores unsigned or altered rows. 330 automated tests, including edited, unsigned, revived and forged rows. Not checked in a running app with the real Keychain (a first run creates `signing.key`; macOS may show a Keychain prompt). Existing approvals from before this change must be re-approved.
 
+## Follow-up: shell-mode guard
+Planning agents' terminals refuse input that starts a line with `!` (`input-guard.ts`, 12 tests, 335 in total). Best effort only; execution agents are unguarded; not checked against the real CLI.
+
 ## Open items after Phase 7
 `repoPath` re-validation for the Team Lead and later worktree operations (agent start now re-validates); how to treat the `!` shell-mode gap; packaging (**Planned**, deferred): `asarUnpack` for the SDK binary, `node-pty` and the agent server, Electron Fuses, signing.

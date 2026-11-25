@@ -40,7 +40,7 @@ Invoke channels (renderer to main), defined in `src/shared/constants/ipc.ts`; th
 | `agents.stop(projectId, agentId)` | `agents:stop` | `{projectId, agentId}` | `DeveloperAgent` (it becomes `stopped` when the process exits) |
 | `agents.discard(projectId, agentId, force?)` | `agents:discard` | `{projectId, agentId, force?}` | `DeveloperAgent`; removes the worktree, refuses uncommitted changes unless `force` |
 | `agents.attach(projectId, agentId)` / `detach` | `agents:attach` / `agents:detach` | `{projectId, agentId}` | `{history, live}` / `null`. Output is pushed only after attaching |
-| `agents.write(projectId, agentId, data)` | `agents:write` | `{projectId, agentId, data (<=64KB)}` | `null`. The user typing into the Claude Code session |
+| `agents.write(projectId, agentId, data)` | `agents:write` | `{projectId, agentId, data (<=64KB)}` | `null`. The user typing into the Claude Code session. Refused with `SHELL_MODE_BLOCKED` in a planning agent when the input would start a line with `!` |
 | `agents.resize(projectId, agentId, cols, rows)` | `agents:resize` | `cols 20-500, rows 5-200` | `null` |
 | `agents.summary()` | `agents:summary` | none | `{running}` |
 

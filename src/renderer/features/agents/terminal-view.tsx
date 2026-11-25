@@ -42,7 +42,11 @@ export function TerminalView({ projectId, agentId, interactive }: { projectId: s
     // ignored until the replay has finished.
     let replayDone = false
     const input = term.onData((d) => {
-      if (replayDone && interactiveRef.current) void window.orbyte.agents.write(projectId, agentId, d)
+      if (!replayDone || !interactiveRef.current) return
+      void window.orbyte.agents.write(projectId, agentId, d).then((res) => {
+        // Say why a keystroke was refused instead of dropping it silently.
+        if (!res.ok && !disposed) term.write(`\r\n\x1b[33m[Orbyte] ${res.error.message}\x1b[0m\r\n`)
+      })
     })
 
     void window.orbyte.agents.attach(projectId, agentId).then((res) => {

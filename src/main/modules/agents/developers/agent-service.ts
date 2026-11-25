@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { MAX_TERMINAL_WRITE_BYTES, type AttachResult, type DeveloperAgent } from '@shared/schemas/agent'
+import { InputGuard, SHELL_MODE_BLOCKED } from './input-guard'
 import type { SubmittedResult } from '@shared/schemas/execution'
 import type { SubmittedPlan } from '@shared/schemas/plan'
 import type { AppEvent } from '@shared/schemas/team-lead'
@@ -75,6 +76,8 @@ interface Live {
   inboxTimer: NodeJS.Timeout | null
   /** The drain in progress, if any: overlapping callers share it instead of skipping. */
   drainPromise: Promise<void> | null
+  /** Present for planning agents only: refuses `!` shell-mode input. */
+  guard: InputGuard | null
   title: string
   lastActivityAt: number
   stopRequested: boolean
@@ -221,7 +224,7 @@ export class AgentService {
     let resolveDone!: () => void
     const done = new Promise<void>((r) => (resolveDone = r))
     const live: Live = {
-      proc, buffer: new TerminalBuffer(), pending: '', flushTimer: null, killTimer: null, inboxTimer: null, drainPromise: null, title: '', lastActivityAt: 0,
+      proc, buffer: new TerminalBuffer(), pending: '', flushTimer: null, killTimer: null, inboxTimer: null, drainPromise: null, guard: agent.kind === 'planning' ? new InputGuard() : null, title: '', lastActivityAt: 0,
       stopRequested: false, interrupted: false, done, resolveDone
     }
     this.live.set(agent.id, live)
@@ -428,6 +431,7 @@ export class AgentService {
   write(projectId: string, agentId: string, data: string): void {
     const live = this.requireLive(projectId, agentId)
     if (Buffer.byteLength(data) > MAX_TERMINAL_WRITE_BYTES) throw new AppError('INVALID_INPUT', 'Too much input at once.')
+    if (live.guard && !live.guard.allow(data)) throw new AppError('SHELL_MODE_BLOCKED', SHELL_MODE_BLOCKED)
     live.proc.write(data)
   }
 
