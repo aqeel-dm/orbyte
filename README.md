@@ -29,4 +29,4 @@ pnpm db:generate  # after editing src/main/database/schema.ts; commit the genera
 - [ ] Phase 4: developer agents (node-pty, worktrees, xterm)
 - [ ] Phase 5: planning and approval gate
 - [ ] Phase 6: execution and review
-- [ ] Phase 7: reliability, packaging (electron-builder config, asarUnpack for native modules, bundle `drizzle/` as extraResources) 
+- [x] Phase 7: reliability; packaging builds unsigned macOS releases from `main` (signing and Fuses still planned) 

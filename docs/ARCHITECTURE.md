@@ -83,7 +83,7 @@ Source is the reference; if this document disagrees with the code, fix the docum
 `src/main/logging/logger.ts` is the only logger: main code calls `log.info|warn|error` instead of `console`. `modules/maintenance/` holds `MaintenanceService` (startup sweep, orphan scan and clean, database backup), reached through three channels in `ipc/maintenance.ts`.
 
 ## Planned, not built
-Packaging (deferred): `asarUnpack` for the SDK binary, `node-pty` and the agent server, Electron Fuses, signing. See `ROADMAP.md`. Integrations (Jira, Linear, GitHub Issues) must sit behind an adapter interface so the task model stays provider-neutral.
+Packaging: `electron-builder.yml` (macOS dmg + zip, `asarUnpack` for `node-pty`, `better-sqlite3` and the SDK's `claude` binary, `drizzle/` as extra resources); a GitHub Actions workflow releases every non-docs push to `main`. Still Planned: Electron Fuses, signing and notarization, auto-update. See `ROADMAP.md`. Integrations (Jira, Linear, GitHub Issues) must sit behind an adapter interface so the task model stays provider-neutral.
 
 ## Decisions
 - Electron main as backend, typed IPC, no HTTP server.
