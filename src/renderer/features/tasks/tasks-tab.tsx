@@ -12,7 +12,7 @@ import { PlanDialog } from '@/features/plans/plan-dialog'
 import { ProposalCard } from './proposal-card'
 import { TaskDialog } from './task-dialog'
 
-export function TasksTab({ projectId, archived, onAgentStarted }: { projectId: string; archived: boolean; onAgentStarted: (agentId: string) => void }) {
+export function TasksTab({ projectId, repoPath, archived, onAgentStarted }: { projectId: string; repoPath: string; archived: boolean; onAgentStarted: (agentId: string) => void }) {
   const { tasks, pending, loading, error, refresh } = useTasks(projectId)
   const [dialog, setDialog] = useState<{ task?: Task } | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -87,7 +87,7 @@ export function TasksTab({ projectId, archived, onAgentStarted }: { projectId: s
       {closedCount > 0 && <Button variant="ghost" size="sm" onClick={() => setShowClosed((v) => !v)}>{showClosed ? 'Hide' : 'Show'} closed tasks ({closedCount})</Button>}
 
       {planTask && <PlanDialog key={planTask.id} projectId={projectId} task={planTask} open onOpenChange={(o) => { if (!o) setPlanTaskId(null) }} />}
-      {resultTask && <ResultDialog key={resultTask.id} projectId={projectId} task={resultTask} open onOpenChange={(o) => { if (!o) setResultTaskId(null) }} />}
+      {resultTask && <ResultDialog key={resultTask.id} projectId={projectId} repoPath={repoPath} task={resultTask} open onOpenChange={(o) => { if (!o) setResultTaskId(null) }} />}
       {dialog && <TaskDialog key={dialog.task?.id ?? 'new'} projectId={projectId} task={dialog.task} others={tasks} open onOpenChange={(o) => { if (!o) setDialog(null) }} />}
     </div>
   )

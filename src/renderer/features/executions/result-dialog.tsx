@@ -1,18 +1,21 @@
-import { AlertTriangle, Check, Sparkles } from 'lucide-react'
+import { AlertTriangle, Check, Copy, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import type { Task } from '@shared/schemas/task'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
+import { buildMergeGuidance } from '@shared/merge-guidance'
+import { useAgents } from '@/hooks/use-agents'
 import { useExecution } from '@/hooks/use-execution'
 
 const REC_LABEL = { approve: 'Recommends accepting', revise: 'Recommends revising', reject: 'Recommends rejecting' } as const
 const REC_VARIANT = { approve: 'success', revise: 'warning', reject: 'destructive' } as const
 const when = (t: number) => new Date(t).toLocaleString()
 
-export function ResultDialog({ projectId, task, open, onOpenChange }: { projectId: string; task: Task; open: boolean; onOpenChange: (open: boolean) => void }) {
+export function ResultDialog({ projectId, repoPath, task, open, onOpenChange }: { projectId: string; repoPath: string; task: Task; open: boolean; onOpenChange: (open: boolean) => void }) {
   const { bundle, error, refresh } = useExecution(projectId, task.id)
+  const { agents } = useAgents(projectId)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [asking, setAsking] = useState(false)
@@ -22,6 +25,7 @@ export function ResultDialog({ projectId, task, open, onOpenChange }: { projectI
   const review = bundle?.reviews.find((r) => r.resultId === result?.id)
   const gate = bundle?.gate
   const run = bundle?.runs[0]
+  const agent = agents.find((a) => a.id === run?.agentId)
 
   async function act(fn: () => Promise<{ ok: boolean; error?: { message: string } }>) {
     setBusy(true); setActionError(null)
@@ -94,6 +98,21 @@ export function ResultDialog({ projectId, task, open, onOpenChange }: { projectI
 
                 {gate.codeUnchanged === false && <Card className="flex items-start gap-2 border-warning/50 p-3 text-sm"><AlertTriangle className="mt-0.5 h-4 w-4 text-warning" />The code in the worktree has changed since this result was submitted. It cannot be accepted; ask for changes to get a new result.</Card>}
                 {gate.state === 'accepted' && <p className="text-sm text-success">You accepted this result. The task is completed. Its changes are in the agent's worktree and branch; merge them yourself.</p>}
+                {gate.state === 'accepted' && agent && !agent.worktreeRemoved && (
+                  <Card className="p-3">
+                    <h4 className="text-sm font-medium">To merge it yourself</h4>
+                    <p className="mt-1 text-xs text-muted-foreground">Orbyte does not run these. Copy them into a terminal when you are ready; check them first.</p>
+                    <ol className="mt-2 space-y-2">
+                      {buildMergeGuidance({ repoPath, worktreePath: agent.worktreePath, branch: agent.branch, baseBranch: agent.baseBranch }).map((s, n) => (
+                        <li key={n} className="text-sm">
+                          <div className="text-xs text-muted-foreground">{n + 1}. {s.title}</div>
+                          <div className="mt-0.5 flex items-start gap-2"><code className="min-w-0 flex-1 break-all rounded bg-muted px-2 py-1 text-xs">{s.command}</code>
+                            <Button size="sm" variant="outline" aria-label={`Copy step ${n + 1}`} onClick={() => void navigator.clipboard?.writeText(s.command).catch(() => undefined)}><Copy className="h-3.5 w-3.5" /></Button></div>
+                        </li>
+                      ))}
+                    </ol>
+                  </Card>
+                )}
                 {gate.blockers.length > 0 && gate.state === 'awaiting_decision' && <ul className="list-disc space-y-0.5 pl-5 text-sm text-muted-foreground">{gate.blockers.map((b, n) => <li key={n}>{b}</li>)}</ul>}
 
                 {task.status === 'in_review' && result.status === 'current' && (

@@ -77,6 +77,7 @@ A local-first, single-user desktop app that coordinates Claude Code developer ag
 | W-8 | Completion only after review; never because the agent says it succeeded | Met: needs a Team Lead review of the current result, the user's acceptance and an unchanged code snapshot |
 | W-9 | Test results are collected | **Partial, by decision**: agent-reported results are labelled unverified; Orbyte does not run tests itself |
 | W-10 | State, history and activity are persisted and shown on the dashboard | Met |
+| W-11 | After you accept a result, Orbyte shows the commands to commit and merge it; it never runs them | Met (guidance only, built from the agent's recorded worktree and branch, single-quoted; not run against a real merge in the UI) |
 
 ## 7. User interface (7)
 

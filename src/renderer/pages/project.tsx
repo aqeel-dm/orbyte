@@ -42,7 +42,7 @@ export function ProjectPage() {
         <button className={tabClass('agents')} onClick={() => selectTab('agents')}>Agents{running > 0 && <span className="ml-1.5 rounded-full bg-success px-1.5 py-0.5 text-xs text-background" title="Agents running">{running}</span>}</button>
       </nav>
       <div className="mt-4 min-h-0 flex-1">
-        {tab === 'overview' ? <OverviewTab project={project} onChanged={refresh} /> : tab === 'tasks' ? <TasksTab projectId={project.id} archived={project.status === 'archived'} onAgentStarted={(id) => { setAgentId(id); selectTab('agents') }} /> : tab === 'agents' ? <AgentsTab projectId={project.id} selectedId={agentId} onSelect={setAgentId} /> : <ChatTab pendingProposals={pending.length} onOpenTasks={() => selectTab('tasks')} projectId={project.id} disabled={project.status === 'archived' || project.repoSettingsTrust === 'unset'} disabledReason={project.status === 'archived' ? 'This project is archived.' : "Decide on this repository's Claude settings in the Overview tab first."} />}
+        {tab === 'overview' ? <OverviewTab project={project} onChanged={refresh} /> : tab === 'tasks' ? <TasksTab projectId={project.id} repoPath={project.repoPath} archived={project.status === 'archived'} onAgentStarted={(id) => { setAgentId(id); selectTab('agents') }} /> : tab === 'agents' ? <AgentsTab projectId={project.id} selectedId={agentId} onSelect={setAgentId} /> : <ChatTab pendingProposals={pending.length} onOpenTasks={() => selectTab('tasks')} projectId={project.id} disabled={project.status === 'archived' || project.repoSettingsTrust === 'unset'} disabledReason={project.status === 'archived' ? 'This project is archived.' : "Decide on this repository's Claude settings in the Overview tab first."} />}
       </div>
     </div>
   )
