@@ -176,7 +176,9 @@ export class GitWorktrees {
     // Untracked files are not in the diff: include their names and a content hash.
     const untrackedEntries: string[] = []
     for (const rel of untracked.slice(0, 500)) {
-      files.push({ path: rel, status: '?', additions: null, deletions: null })
+      // Git's diff does not cover untracked files, so count a new text file's lines ourselves (null: binary, link, large).
+      const lines = await this.countNewLines(join(worktreePath, rel))
+      files.push({ path: rel, status: '?', additions: lines, deletions: lines === null ? null : 0 })
       untrackedEntries.push(`${rel}:${await this.fileDigest(join(worktreePath, rel))}`)
     }
     if (untracked.length > 500) truncated = true
@@ -222,6 +224,22 @@ export class GitWorktrees {
   }
 
   /** Content hash of one untracked file. A symlink hashes its target path (it is never followed). Very large files hash their size. */
+  /** Number of lines in a small regular text file, or null for anything else (a link, a binary, a large file). */
+  private async countNewLines(path: string): Promise<number | null> {
+    try {
+      const st = await lstat(path)
+      if (!st.isFile() || st.size > 1024 * 1024) return null
+      const data = await readFile(path)
+      if (data.subarray(0, 8192).includes(0)) return null
+      if (data.length === 0) return 0
+      let lines = 0
+      for (const byte of data) if (byte === 10) lines++
+      return data[data.length - 1] === 10 ? lines : lines + 1
+    } catch {
+      return null
+    }
+  }
+
   private async fileDigest(path: string): Promise<string> {
     try {
       const st = await lstat(path)

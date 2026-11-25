@@ -155,4 +155,4 @@ Made by the user while building (answers to questions, or direct instructions):
 
 ## Open items
 
-Signing approval and acceptance rows; the `!` shell-mode gap; an Orbyte-run test command; re-validating `repoPath` for the Team Lead and later worktree operations; evidence for new untracked files shows no diff; Playwright tests; integration adapters; packaging. Each is also tracked in `ROADMAP.md` or `SECURITY.md`.
+Signing approval and acceptance rows; the `!` shell-mode gap; an Orbyte-run test command; re-validating `repoPath` for the Team Lead and later worktree operations; the evidence shows line counts but not the diff text itself; Playwright tests; integration adapters; packaging. Each is also tracked in `ROADMAP.md` or `SECURITY.md`.
