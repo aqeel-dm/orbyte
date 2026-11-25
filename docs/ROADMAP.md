@@ -70,5 +70,8 @@ Approvals, acceptances and change requests are signed (migration 0008, `src/main
 ## Follow-up: shell-mode guard
 Planning agents' terminals refuse input that starts a line with `!` (`input-guard.ts`, 12 tests, 335 in total). Best effort only; execution agents are unguarded; not checked against the real CLI.
 
+## Follow-up: error screen
+A render error in a screen now shows a recoverable error card (sidebar kept, Reload and Go to dashboard) instead of a blank window (`components/route-error.tsx`, router `errorElement`). Checked in the real app by loading a proposal with malformed items (the card appeared; Go to dashboard recovered). It catches render errors only, not failed async calls or errors in event handlers, and has no automated test (no UI test setup).
+
 ## Open items after Phase 7
 `repoPath` re-validation for the Team Lead and later worktree operations (agent start now re-validates); how to treat the `!` shell-mode gap; packaging (**Planned**, deferred): `asarUnpack` for the SDK binary, `node-pty` and the agent server, Electron Fuses, signing.

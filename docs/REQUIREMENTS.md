@@ -89,7 +89,7 @@ A local-first, single-user desktop app that coordinates Claude Code developer ag
 | UI-3 | Project workspace: overview, Team Lead chat, tasks, agents, terminal, recent activity | Met |
 | UI-4 | Project workspace: a pending-approvals view | Met (a "Waiting for you" list of proposals, plans and results on the dashboard and each project's overview, opening the Tasks tab; the dashboard tile uses the same count) |
 | UI-5 | Approval interface shows task, plan, agent, Team Lead review and whether execution is blocked or authorized | Met (checked in the real UI) |
-| UI-6 | Clear loading, error, empty and disconnected states; dark and light themes | Met for the screens checked; not a formal design review |
+| UI-6 | Clear loading, error, empty and disconnected states; dark and light themes | Met for the screens checked; not a formal design review. A screen that throws while rendering shows a recovery card instead of a blank window |
 | UI-7 | The interface separates ordinary conversation from state-changing actions | Partial: proposals and approvals are separate dialogs; not assessed beyond that |
 
 ## 8. Persistence and lifecycle (8)
