@@ -154,6 +154,7 @@ export class AgentService {
   ): Promise<DeveloperAgent> {
     const id = randomUUID()
     const baseBranch = project.defaultBranch ?? 'HEAD'
+    await this.deps.worktrees.verifyRepo(project.repoPath)
     const baseCommit = await this.deps.worktrees.resolveBase(project.repoPath, baseBranch)
     const branch = `orbyte/${slug(task.title)}-${id.slice(0, 8)}`
     const worktreePath = join(this.deps.worktreeRoot, project.id, id)

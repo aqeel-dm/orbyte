@@ -35,7 +35,7 @@ Last reviewed: Phase 1 security review (read-only agent review plus grep sweep).
 1. `style-src 'unsafe-inline'` remains in the production CSP (inline style attributes from UI components).
 2. `name` and `description` are stored unsanitized: safe in React, but untrusted if ever placed into prompts.
 3. `git` is resolved from `PATH` with the inherited environment.
-4. `repoPath` is validated only at registration. Re-validate on every privileged use once developer agents run (symlink swap). The Team Lead reads `repoPath` at each turn without re-validating it.
+4. `repoPath` is validated at registration and again before each developer agent starts (`GitWorktrees.verifyRepo`: it must still equal its own realpath, so a symlink swap is caught, and be a git work tree). Later worktree operations (discard, cleanup, evidence) and the Team Lead's per-turn reads do not re-validate it.
 5. Auth failure detection is heuristic (matches error text, `AUTH_REQUIRED`); real not-signed-in behavior has not been exercised. The "session not found" fallback matches the SDK's current error text, observed but undocumented.
 6. Electron Fuses are not configured; no packaging config exists (packaging is deferred by decision) (the SDK's native `claude` binary will need `asarUnpack` handling in Phase 7).
 7. No per-project ownership checks beyond id lookup exist because no per-project resource other than the project itself exists yet; they are required for tasks, agents and terminals.

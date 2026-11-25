@@ -66,6 +66,20 @@ export async function containment(root: string, path: string): Promise<'inside' 
 export class GitWorktrees {
   constructor(private readonly git: GitRunner = defaultGit) {}
 
+  /**
+   * The registered path was resolved with realpath at registration. Check it again before a privileged use:
+   * if it is now a symlink, has moved, or is no longer a git work tree, something replaced it and no agent starts.
+   */
+  async verifyRepo(repoPath: string): Promise<void> {
+    const fail = () => new AppError('INVALID_DIRECTORY', 'The project folder changed since it was registered. Check it and register it again.')
+    try {
+      if ((await realpath(repoPath)) !== repoPath) throw fail()
+      if ((await this.git(repoPath, ['rev-parse', '--is-inside-work-tree'])) !== 'true') throw fail()
+    } catch (err) {
+      throw err instanceof AppError ? err : fail()
+    }
+  }
+
   /** Resolves a ref (for example the default branch) to a commit id. */
   async resolveBase(repoPath: string, baseRef: string): Promise<string> {
     try {

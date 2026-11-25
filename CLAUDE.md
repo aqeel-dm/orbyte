@@ -70,5 +70,5 @@ Read-only agents in `.claude/agents/` (Read, Grep, Glob only): `architecture-rev
 - Terminal input is the user typing into Claude Code, which has a `!` shell mode that works even with `Bash` denied (tested): anything able to call `agents:write` can run shell commands as the user. See `docs/SECURITY.md`; do not claim planning agents are fully write-proof.
 - When testing crashes, kill the Electron main process, not the `pnpm`/Node wrapper.
 - End-to-end check recipes: `docs/DEVELOPMENT.md`.
-- Known gaps (see `docs/SECURITY.md`): `style-src 'unsafe-inline'` in prod CSP, `repoPath` revalidation before developer agents, heuristic auth-error detection, no packaging config. Never send raw SDK/runtime error text to the renderer (map to fixed messages; log in main).
+- Known gaps (see `docs/SECURITY.md`): `style-src 'unsafe-inline'` in prod CSP, `repoPath` revalidation only at agent start (not for the Team Lead or later worktree operations), heuristic auth-error detection, no packaging config. Never send raw SDK/runtime error text to the renderer (map to fixed messages; log in main).
 - CSP is injected at build time from `electron.vite.config.ts` (strict in prod, looser in dev). Navigation/permission guards live in `src/main/app/security.ts`.

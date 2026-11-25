@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { GitWorktrees, containment, isInside } from '../src/main/modules/agents/developers/worktrees'
@@ -113,5 +113,21 @@ describe('GitWorktrees', () => {
     expect(isInside('/root/wt', '/root/wt-evil/a')).toBe(false)
     expect(isInside('/root/wt', '/root/wt/../other')).toBe(false)
     expect(isInside('/root/wt', '/etc')).toBe(false)
+  })
+})
+
+describe('verifyRepo', () => {
+  it('accepts a real repository path', async () => {
+    const repo = realpathSync(makeGitRepo())
+    await expect(new GitWorktrees().verifyRepo(repo)).resolves.toBeUndefined()
+  })
+  it('refuses a path that became a symlink, a missing path and a non-repository', async () => {
+    const w = new GitWorktrees()
+    const repo = realpathSync(makeGitRepo())
+    const link = join(realpathSync(tempDir()), 'link')
+    symlinkSync(repo, link)
+    expect(await codeOf(w.verifyRepo(link))).toBe('INVALID_DIRECTORY')
+    expect(await codeOf(w.verifyRepo(join(repo, 'gone')))).toBe('INVALID_DIRECTORY')
+    expect(await codeOf(w.verifyRepo(realpathSync(tempDir())))).toBe('INVALID_DIRECTORY')
   })
 })
