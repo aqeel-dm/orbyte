@@ -20,6 +20,9 @@ import { GitWorktrees } from './modules/agents/developers/worktrees'
 import { registerAgentHandlers } from './ipc/agents'
 import { registerPlanHandlers } from './ipc/plans'
 import { registerExecutionHandlers } from './ipc/executions'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { checkSystem } from './modules/maintenance/system-check'
 import { registerMaintenanceHandlers } from './ipc/maintenance'
 import { initLogging } from './logging/logger'
 import { MaintenanceService } from './modules/maintenance/service'
@@ -212,7 +215,21 @@ async function bootstrap(): Promise<void> {
   registerAgentHandlers({ agents })
   registerPlanHandlers({ approvals, reviews })
   registerExecutionHandlers({ execution, completion, resultReviews, testRuns })
-  registerMaintenanceHandlers({ maintenance })
+  const probe = async (file: string, args: string[]): Promise<string | null> => {
+    try {
+      const { stdout } = await promisify(execFile)(file, args, { timeout: 8000, windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
+      return stdout.trim().split('\n')[0]?.slice(0, 80) || null
+    } catch { return null }
+  }
+  registerMaintenanceHandlers({
+    maintenance,
+    systemCheck: () => checkSystem({
+      gitVersion: () => probe('git', ['--version']),
+      resolveClaude: () => resolveClaudeBinary({ env: process.env, home: homedir() }),
+      claudeVersion: async () => { const bin = resolveClaudeBinary({ env: process.env, home: homedir() }); return bin ? probe(bin, ['--version']) : null },
+      secureStorageAvailable: () => safeStorage.isEncryptionAvailable()
+    })
+  })
   registerTaskHandlers({ tasks: taskService, proposals: proposalService, activity: new ActivityRepository(dbHandle.db), decisions: decisionRepo, projects: projectService })
   registerProjectHandlers({
     projects: projectService,

@@ -76,5 +76,8 @@ A render error in a screen now shows a recoverable error card (sidebar kept, Rel
 ## Follow-up: diff in the result dialog
 "Show the changes" in the result dialog displays the tracked diff and new files' content, fetched on demand and never stored (338 tests; not yet seen in a running app with a real result). Capped at 60,000 characters.
 
+## Follow-up: search, filters and the getting-started card
+The Tasks tab has search and a priority filter; the dashboard searches projects once there are more than three. A getting-started card (`system:check`) reports git, the `claude` command and secure key storage and stays until the first project is registered (and always while something is missing). 343 tests; the card was checked in the real app with an empty data folder. Usage and cost visibility was not built (see `REQUIREMENTS.md`).
+
 ## Open items after Phase 7
 `repoPath` re-validation for the Team Lead and later worktree operations (agent start now re-validates); how to treat the `!` shell-mode gap; packaging (**Planned**, deferred): `asarUnpack` for the SDK binary, `node-pty` and the agent server, Electron Fuses, signing.

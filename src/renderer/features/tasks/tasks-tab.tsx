@@ -1,6 +1,8 @@
 import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { PRIORITY_ORDER, type Task } from '@shared/schemas/task'
+import { filterTasks } from '@shared/filters'
+import { Input } from '@/components/ui/input'
 import { CONTENT_EDITABLE, isOpen, userTransitionsFrom, type TaskStatus } from '@shared/task-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -17,6 +19,9 @@ export function TasksTab({ projectId, repoPath, archived, onAgentStarted }: { pr
   const [dialog, setDialog] = useState<{ task?: Task } | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [showClosed, setShowClosed] = useState(false)
+  const [query, setQuery] = useState('')
+  const [priority, setPriority] = useState<string>('all')
+  const filtering = query.trim() !== '' || priority !== 'all'
   const [planTaskId, setPlanTaskId] = useState<string | null>(null)
   const [resultTaskId, setResultTaskId] = useState<string | null>(null)
   const resultTask = tasks.find((t) => t.id === resultTaskId) ?? null
@@ -36,7 +41,8 @@ export function TasksTab({ projectId, repoPath, archived, onAgentStarted }: { pr
     if (!res.ok) setActionError(res.error.message)
   }
 
-  const visible = tasks.filter((t) => showClosed || isOpen(t.status))
+  // A search looks through closed tasks too, so a finished task can be found again.
+  const visible = filterTasks(tasks, { query, priority }).filter((t) => showClosed || filtering || isOpen(t.status))
   const groups = STATUS_ORDER.map((s) => ({ status: s, items: visible.filter((t) => t.status === s).sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]) })).filter((g) => g.items.length > 0)
   const closedCount = tasks.filter((t) => !isOpen(t.status)).length
 
@@ -47,10 +53,21 @@ export function TasksTab({ projectId, repoPath, archived, onAgentStarted }: { pr
         <Button size="sm" disabled={archived} onClick={() => setDialog({})}><Plus className="h-4 w-4" />New task</Button>
       </div>
 
+      {tasks.length > 0 && (
+        <div className="flex gap-2">
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search tasks by title or description" aria-label="Search tasks" maxLength={200} />
+          <select value={priority} onChange={(e) => setPriority(e.target.value)} aria-label="Filter by priority" className="h-9 rounded-md border border-border bg-card px-2 text-sm">
+            <option value="all">All priorities</option>
+            {(Object.keys(PRIORITY_LABEL) as (keyof typeof PRIORITY_LABEL)[]).map((k) => <option key={k} value={k}>{PRIORITY_LABEL[k]}</option>)}
+          </select>
+        </div>
+      )}
       {pending.map((p) => <ProposalCard key={p.id} proposal={p} tasks={tasks} onDone={() => void refresh()} />)}
       {(error || actionError) && <p role="alert" className="text-sm text-destructive">{error ?? actionError}</p>}
 
-      {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : groups.length === 0 && pending.length === 0 ? (
+      {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : groups.length === 0 && pending.length === 0 && filtering ? (
+        <Card className="border-dashed p-10 text-center text-sm text-muted-foreground">No tasks match. <button className="underline" onClick={() => { setQuery(''); setPriority('all') }}>Clear the filter</button></Card>
+      ) : groups.length === 0 && pending.length === 0 ? (
         <Card className="border-dashed p-10 text-center text-sm text-muted-foreground">No tasks yet. Add one, or ask the Team Lead to break a requirement down in the Team Lead tab.</Card>
       ) : groups.map((g) => (
         <section key={g.status}>
@@ -84,7 +101,7 @@ export function TasksTab({ projectId, repoPath, archived, onAgentStarted }: { pr
           </ul>
         </section>
       ))}
-      {closedCount > 0 && <Button variant="ghost" size="sm" onClick={() => setShowClosed((v) => !v)}>{showClosed ? 'Hide' : 'Show'} closed tasks ({closedCount})</Button>}
+      {closedCount > 0 && !filtering && <Button variant="ghost" size="sm" onClick={() => setShowClosed((v) => !v)}>{showClosed ? 'Hide' : 'Show'} closed tasks ({closedCount})</Button>}
 
       {planTask && <PlanDialog key={planTask.id} projectId={projectId} task={planTask} open onOpenChange={(o) => { if (!o) setPlanTaskId(null) }} />}
       {resultTask && <ResultDialog key={resultTask.id} projectId={projectId} repoPath={repoPath} task={resultTask} open onOpenChange={(o) => { if (!o) setResultTaskId(null) }} />}

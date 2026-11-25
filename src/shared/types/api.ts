@@ -5,6 +5,7 @@ import type { ExecutionBundle, ResultChanges, ResultDecision, TestRun } from '..
 import type { PlanApproval, PlanBundle } from '../schemas/plan'
 import type { AgentSummary, AttachResult, DeveloperAgent, TerminalEvent } from '../schemas/agent'
 import type { ActivityEvent, DecisionItem, RecentActivityEvent, CreateTaskInput, ProposalItem, Task, TaskProposal, TaskSummary, UpdateTaskInput } from '../schemas/task'
+import type { SystemCheck } from '../schemas/system'
 import type { BackupResult, CleanOrphansResult, MaintenanceScan } from '../schemas/maintenance'
 import type { TaskStatus } from '../task-state'
 import type { Result } from './result'
@@ -83,6 +84,10 @@ export interface OrbyteApi {
     revoke(projectId: string, taskId: string): Promise<Result<PlanBundle>>
     /** Asks the Team Lead to (re)review the current plan. Advice only. */
     requestReview(projectId: string, taskId: string, planId: string): Promise<Result<null>>
+  }
+  system: {
+    /** What Orbyte needs from this computer (git, the claude command, secure key storage). Read-only. */
+    check(): Promise<Result<SystemCheck>>
   }
   maintenance: {
     /** Lists worktree directories in Orbyte's own directory that no agent owns. Nothing is changed. */

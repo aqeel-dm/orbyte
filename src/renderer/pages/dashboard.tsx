@@ -1,7 +1,9 @@
 import { FolderPlus, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { Project } from '@shared/schemas/project'
+import { filterProjects } from '@shared/filters'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { useProjects } from '@/hooks/use-projects'
 import type { TaskSummary } from '@shared/schemas/task'
@@ -10,6 +12,7 @@ import { MaintenancePanel } from '@/features/maintenance/maintenance-panel'
 import { ProjectCard } from '@/features/projects/project-card'
 import { DecisionList } from '@/features/projects/decision-list'
 import { useDecisions } from '@/hooks/use-decisions'
+import { SetupChecklist } from '@/features/projects/setup-checklist'
 import { RecentActivity } from '@/features/projects/recent-activity'
 import { RegisterProjectDialog } from '@/features/projects/register-project-dialog'
 
@@ -28,6 +31,7 @@ export function DashboardPage() {
   const [showArchived, setShowArchived] = useState(false)
   const { projects, loading, error, refresh } = useProjects(showArchived)
   const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
   const [summary, setSummary] = useState<TaskSummary | null>(null)
   const [running, setRunning] = useState<number | null>(null)
   const [leads, setLeads] = useState<TeamLeadSummary | null>(null)
@@ -41,6 +45,7 @@ export function DashboardPage() {
     return window.orbyte.onEvent((e) => { if (e.type === 'tasks_changed' || e.type === 'project_updated' || e.type === 'agent_changed' || e.type === 'turn_started' || e.type === 'turn_completed' || e.type === 'turn_error') load() })
   }, [])
   const waiting = useDecisions()
+  const shownProjects = filterProjects(projects, projects.length > 3 ? search : '')
   const [actionError, setActionError] = useState<string | null>(null)
 
   async function archive(p: Project) {
@@ -66,6 +71,8 @@ export function DashboardPage() {
         <Button onClick={() => setOpen(true)}><FolderPlus className="h-4 w-4" />Register project</Button>
       </header>
 
+      {!loading && <SetupChecklist projectCount={projects.filter((p) => p.status === 'active').length} onRegister={() => setOpen(true)} />}
+
       <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Stat label="Projects" value={projects.filter((p) => p.status === 'active').length} />
         <Stat label="Team Leads" value={leads?.ready ?? '—'} note={leads ? `${leads.working} working now` : undefined} />
@@ -82,6 +89,7 @@ export function DashboardPage() {
           <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />Show archived
         </label>
       </div>
+      {projects.length > 3 && <Input className="mb-3" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search projects by name, description or folder" aria-label="Search projects" maxLength={200} />}
       {(error || actionError) && <p role="alert" className="mb-3 text-sm text-destructive">{error ?? actionError}</p>}
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading…</div>
@@ -92,7 +100,10 @@ export function DashboardPage() {
           <Button onClick={() => setOpen(true)}><FolderPlus className="h-4 w-4" />Register your first project</Button>
         </Card>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2">{projects.map((p) => <ProjectCard key={p.id} project={p} onArchive={archive} onRestore={restore} />)}</div>
+        <>
+          <div className="grid gap-3 md:grid-cols-2">{shownProjects.map((p) => <ProjectCard key={p.id} project={p} onArchive={archive} onRestore={restore} />)}</div>
+          {shownProjects.length === 0 && <p className="text-sm text-muted-foreground">No projects match "{search}".</p>}
+        </>
       )}
 
       <RecentActivity />

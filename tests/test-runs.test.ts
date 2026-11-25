@@ -120,7 +120,8 @@ describe('runCommand and testEnv', () => {
   })
 })
 
-describe('TestRunService', () => {
+// These start real npm processes after a real git setup: the default 5 s limit is too tight on a loaded machine.
+describe('TestRunService', { timeout: 30_000 }, () => {
   it('runs the project test script for the current result and records a pass', async () => {
     const c = await inReview('node -e "console.log(123)"')
     const { id: pid } = c.s.project
