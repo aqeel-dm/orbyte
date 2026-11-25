@@ -5,6 +5,7 @@ import { CONTENT_EDITABLE, checkTransition, isOpen, type TaskStatus, type Transi
 import type { ProjectRepository } from '../projects/repository'
 import { validateTaskDependencies } from './dependencies'
 import type { TaskRepository } from './repository'
+import { log } from '../../logging/logger'
 
 export interface TaskDigest {
   id: string
@@ -113,7 +114,7 @@ export class TaskService {
       try {
         this.deps.onLeaveActive?.(task.id)
       } catch (err) {
-        console.error('[tasks] onLeaveActive failed', err)
+        log.error('[tasks] onLeaveActive failed', err)
       }
     }
     return moved
@@ -148,7 +149,7 @@ export class TaskService {
     try {
       this.deps.emit({ type: 'tasks_changed', projectId })
     } catch (err) {
-      console.error('[tasks] failed to emit event', err)
+      log.error('[tasks] failed to emit event', err)
     }
   }
 }

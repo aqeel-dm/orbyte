@@ -16,6 +16,7 @@ import type { AgentProcessReaper } from './process-reaper'
 import { TerminalBuffer, lastTerminalTitle } from './terminal-buffer'
 import type { TerminalHub } from './terminal-hub'
 import { GitWorktrees, containment } from './worktrees'
+import { log } from '../../../logging/logger'
 
 /** The slice of node-pty the service uses. A fake implements it in tests. */
 export interface PtyProcess {
@@ -98,6 +99,9 @@ export class AgentService {
   private closing = false
   /** Starts currently running, so shutdown can wait for them (the reservation set is released earlier). */
   private inFlight = 0
+
+  /** Worktrees being discarded right now: an execution must not start in one (checked on both sides of the git awaits). */
+  private readonly discarding = new Set<string>()
 
   constructor(private readonly deps: AgentServiceDeps) {}
 
@@ -198,7 +202,7 @@ export class AgentService {
         { cwd: worktreePath, env: agentEnv(this.deps.env()), cols: 120, rows: 32 }
       )
     } catch (err) {
-      console.error('[agents] spawn failed', err)
+      log.error('[agents] spawn failed', err)
       this.returnTaskToReady(project.id, task.id)
       await this.cleanupFailedStart(agent)
       throw new AppError('SPAWN_FAILED', 'Could not start Claude Code. See the application log.')
@@ -267,6 +271,7 @@ export class AgentService {
     const task = this.deps.taskRepo.get(basedOn.taskId)
     if (!task || task.projectId !== project.id) throw new AppError('NOT_FOUND', 'Task not found.')
     if (this.starting.has(task.id) || this.deps.agents.activeForTask(task.id)) throw new AppError('AGENT_ALREADY_RUNNING', 'An agent is already working on this task.')
+    if (this.discarding.has(basedOn.worktreePath)) throw new AppError('WORKTREE_FAILED', 'The worktree is being discarded.')
     if (this.deps.agents.countActive() + this.starting.size >= (this.deps.maxActive ?? DEFAULT_MAX_ACTIVE)) throw new AppError('TOO_MANY_AGENTS', 'Too many agents are running. Stop one first.')
     const claude = this.deps.resolveClaude()
     if (!claude) throw new AppError('CLAUDE_NOT_FOUND', 'The `claude` command was not found. Install Claude Code and make sure it is on your PATH.')
@@ -275,6 +280,8 @@ export class AgentService {
       throw new AppError('WORKTREE_FAILED', "The agent's worktree is gone, so the work cannot continue there.")
     }
 
+    // Checked again after the await above: a discard may have begun while the path was being resolved.
+    if (this.discarding.has(basedOn.worktreePath)) throw new AppError('WORKTREE_FAILED', 'The worktree is being discarded.')
     this.starting.add(task.id)
     this.inFlight++
     try {
@@ -304,7 +311,7 @@ export class AgentService {
           { cwd: basedOn.worktreePath, env: agentEnv(this.deps.env()), cols: 120, rows: 32 }
         )
       } catch (err) {
-        console.error('[agents] execution spawn failed', err)
+        log.error('[agents] execution spawn failed', err)
         // The worktree holds the work: it is never removed on a failed start.
         this.deps.agents.finish(id, 'failed', null, 'Failed to start')
         this.changed(project.id, id)
@@ -356,6 +363,9 @@ export class AgentService {
       throw new AppError('TASK_ACTIVE', 'This task is being implemented or reviewed. Cancel it or finish the review first.')
     }
     const project = this.requireProject(projectId)
+    if (this.discarding.has(agent.worktreePath)) throw new AppError('AGENT_RUNNING', 'This worktree is already being discarded.')
+    this.discarding.add(agent.worktreePath)
+    try {
     // Follows symlinks, so a link swapped into the worktree directory cannot point us elsewhere.
     const where = await containment(this.deps.worktreeRoot, agent.worktreePath)
     if (where === 'outside') throw new AppError('WORKTREE_FAILED', 'The worktree is outside Orbyte\'s worktree directory.')
@@ -371,6 +381,8 @@ export class AgentService {
           throw new AppError('WORKTREE_DIRTY', 'The worktree has commits that are not on its branch (for example from a detached HEAD). Discard anyway to lose them.')
         }
       }
+      // The awaits above gave a start the chance to begin: check again, synchronously, right before deleting.
+      this.assertNothingActive(agent.worktreePath, agent.taskId)
       await this.deps.worktrees.remove(project.repoPath, agent.worktreePath, force)
     }
     await this.deps.worktrees.deleteBranchIfUnmoved(project.repoPath, agent.branch, agent.baseCommit)
@@ -379,6 +391,17 @@ export class AgentService {
     for (const a of sharing) await this.deps.inbox.remove(a.id)
     this.changed(projectId, agentId)
     return toPublicAgent(updated ?? agent)
+    } finally {
+      this.discarding.delete(agent.worktreePath)
+    }
+  }
+
+  private assertNothingActive(worktreePath: string, taskId: string): void {
+    if (this.deps.agents.listByWorktree(worktreePath).some((a) => this.live.has(a.id) || a.status === 'starting' || a.status === 'running') || this.starting.has(taskId)) {
+      throw new AppError('AGENT_RUNNING', 'An agent started in this worktree. Stop it before discarding.')
+    }
+    const status = this.deps.taskRepo.get(taskId)?.status
+    if (status === 'in_progress' || status === 'in_review') throw new AppError('TASK_ACTIVE', 'This task is being implemented or reviewed. Cancel it or finish the review first.')
   }
 
   /** Subscribes a window to this agent's terminal and returns recent output. */
@@ -416,22 +439,24 @@ export class AgentService {
    * graceful shutdown never ran) their processes may still be running, so each recorded process is
    * stopped first, but only if it is verifiably that agent's `claude` process.
    */
-  async recoverInterrupted(): Promise<void> {
+  async recoverInterrupted(): Promise<number> {
     if (this.deps.reaper) {
       for (const agent of this.deps.agents.listActive()) {
         if (agent.pid === null) continue
         try {
           const result = await this.deps.reaper.reap(agent.pid, agent.claudeSessionId)
-          if (result === 'killed') console.warn(`[agents] stopped an orphaned agent process left by a previous run (${agent.name})`)
+          if (result === 'killed') log.warn(`[agents] stopped an orphaned agent process left by a previous run (${agent.name})`)
         } catch (err) {
-          console.error('[agents] orphan check failed', err)
+          log.error('[agents] orphan check failed', err)
         }
       }
     }
-    for (const agent of this.deps.agents.markInterruptedAll()) {
+    const interrupted = this.deps.agents.markInterruptedAll()
+    for (const agent of interrupted) {
       this.returnTaskToReady(agent.projectId, agent.taskId)
       this.changed(agent.projectId, agent.id)
     }
+    return interrupted.length
   }
 
   /** Stops every agent (called on quit) and waits briefly for the processes to exit. */
@@ -458,7 +483,7 @@ export class AgentService {
       try {
         live.proc.kill('SIGKILL')
       } catch (err) {
-        console.error('[agents] SIGKILL failed', err)
+        log.error('[agents] SIGKILL failed', err)
       }
     }, graceMs)
   }
@@ -479,7 +504,7 @@ export class AgentService {
         }
       }
     } catch (err) {
-      console.error('[agents] output handling failed', err)
+      log.error('[agents] output handling failed', err)
     }
   }
 
@@ -496,32 +521,32 @@ export class AgentService {
   private async doDrain(agent: AgentRecord): Promise<void> {
     try {
       const { plans, progress, results, rejected } = await this.deps.inbox.drain(agent.id)
-      if (rejected > 0) console.warn(`[agents] discarded ${rejected} invalid file(s) from ${agent.name}`)
+      if (rejected > 0) log.warn(`[agents] discarded ${rejected} invalid file(s) from ${agent.name}`)
       // Each kind of agent may only deliver its own kind of file: a forged file of the wrong kind is ignored.
       if (agent.kind === 'planning') {
         for (const plan of plans) {
           try {
             this.deps.onPlan?.(agent.id, plan)
           } catch (err) {
-            console.error('[agents] plan handling failed', err)
+            log.error('[agents] plan handling failed', err)
           }
         }
       } else {
         try {
           if (progress.length > 0) this.deps.onProgress?.(agent.id, progress)
         } catch (err) {
-          console.error('[agents] progress handling failed', err)
+          log.error('[agents] progress handling failed', err)
         }
         for (const result of results) {
           try {
             await this.deps.onResult?.(agent.id, result)
           } catch (err) {
-            console.error('[agents] result handling failed', err)
+            log.error('[agents] result handling failed', err)
           }
         }
       }
     } catch (err) {
-      console.error('[agents] could not read the plan inbox', err)
+      log.error('[agents] could not read the plan inbox', err)
     }
   }
 
@@ -540,7 +565,7 @@ export class AgentService {
       try {
         fn()
       } catch (err) {
-        console.error(`[agents] exit handling: ${label} failed`, err)
+        log.error(`[agents] exit handling: ${label} failed`, err)
       }
     }
     if (live.flushTimer) clearTimeout(live.flushTimer)
@@ -577,7 +602,7 @@ export class AgentService {
     try {
       this.deps.tasks.transitionSystem(projectId, taskId, 'ready')
     } catch (err) {
-      if (!(err instanceof AppError)) console.error('[agents] could not return task to ready', err)
+      if (!(err instanceof AppError)) log.error('[agents] could not return task to ready', err)
     }
   }
 
@@ -589,7 +614,7 @@ export class AgentService {
         await this.deps.worktrees.deleteBranchIfUnmoved(project.repoPath, agent.branch, agent.baseCommit)
       }
     } catch (err) {
-      console.error('[agents] cleanup after failed start failed', err)
+      log.error('[agents] cleanup after failed start failed', err)
     }
     this.deps.agents.finish(agent.id, 'failed', null, 'Failed to start')
     this.deps.agents.markWorktreeRemoved(agent.id)
@@ -602,7 +627,7 @@ export class AgentService {
       await mkdir(this.deps.logDir, { recursive: true, mode: 0o700 })
       await writeFile(join(this.deps.logDir, `${agentId}.log`), buffer.tail(LOG_TAIL_CHARS), { mode: 0o600 })
     } catch (err) {
-      console.error('[agents] could not save terminal log', err)
+      log.error('[agents] could not save terminal log', err)
     }
   }
 
@@ -639,7 +664,7 @@ export class AgentService {
     try {
       this.deps.emit({ type: 'agent_changed', projectId, agentId })
     } catch (err) {
-      console.error('[agents] failed to emit event', err)
+      log.error('[agents] failed to emit event', err)
     }
   }
 }

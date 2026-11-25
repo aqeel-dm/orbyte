@@ -5,6 +5,7 @@ import type { ExecutionBundle, ResultDecision } from '../schemas/execution'
 import type { PlanApproval, PlanBundle } from '../schemas/plan'
 import type { AgentSummary, AttachResult, DeveloperAgent, TerminalEvent } from '../schemas/agent'
 import type { ActivityEvent, CreateTaskInput, ProposalItem, Task, TaskProposal, TaskSummary, UpdateTaskInput } from '../schemas/task'
+import type { BackupResult, CleanOrphansResult, MaintenanceScan } from '../schemas/maintenance'
 import type { TaskStatus } from '../task-state'
 import type { Result } from './result'
 
@@ -74,6 +75,14 @@ export interface OrbyteApi {
     revoke(projectId: string, taskId: string): Promise<Result<PlanBundle>>
     /** Asks the Team Lead to (re)review the current plan. Advice only. */
     requestReview(projectId: string, taskId: string, planId: string): Promise<Result<null>>
+  }
+  maintenance: {
+    /** Lists worktree directories in Orbyte's own directory that no agent owns. Nothing is changed. */
+    scan(): Promise<Result<MaintenanceScan>>
+    /** Removes the listed orphans (by the ids a scan returned). A worktree with changes is kept and reported. */
+    cleanOrphans(ids: string[]): Promise<Result<CleanOrphansResult>>
+    /** Asks where to save, then writes a consistent copy of the database. The renderer supplies no path. */
+    backupDatabase(): Promise<Result<BackupResult>>
   }
   executions: {
     /** Starts execution of an approved plan. The backend runs the gate: it refuses without a valid approval. */

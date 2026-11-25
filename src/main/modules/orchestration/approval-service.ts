@@ -13,6 +13,7 @@ import type { TaskService } from '../tasks/service'
 import type { ExecutionRepository } from './execution-repository'
 import { planHash } from './plan-hash'
 import type { PlanRepository } from './plan-repository'
+import { log } from '../../logging/logger'
 
 export type Verdict = { ok: true; approval: PlanApproval; plan: TaskPlan } | { ok: false; blockers: string[] }
 
@@ -90,7 +91,7 @@ export class ApprovalService {
       // With no live agent to revise the plan, return the task so a new agent can be started.
       if (!this.deps.agents.activeForTask(taskId)) this.deps.tasks.transitionSystem(projectId, taskId, 'ready')
     } catch (err) {
-      console.error('[approvals] could not move the task after a rejection', err)
+      log.error('[approvals] could not move the task after a rejection', err)
     }
     this.changed(projectId, taskId)
     return approval
@@ -259,7 +260,7 @@ export class ApprovalService {
       this.deps.emit({ type: 'plans_changed', projectId, taskId })
       this.deps.emit({ type: 'tasks_changed', projectId })
     } catch (err) {
-      console.error('[approvals] failed to emit event', err)
+      log.error('[approvals] failed to emit event', err)
     }
   }
 }

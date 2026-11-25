@@ -7,6 +7,7 @@ import type { ProjectRepository } from '../projects/repository'
 import type { TaskRepository } from '../tasks/repository'
 import { renderPlan } from './plan-hash'
 import type { PlanRepository } from './plan-repository'
+import { log } from '../../logging/logger'
 
 const REVIEW_MAX_TURNS = 12
 
@@ -40,7 +41,7 @@ export class ReviewService {
       if (this.deps.plans.listReviews(plan.taskId).some((r) => r.planId === plan.id)) return
       this.request(plan.projectId, plan.taskId, plan.id)
     } catch (err) {
-      console.error('[reviews] automatic review not started', err instanceof AppError ? err.message : err)
+      log.error('[reviews] automatic review not started', err instanceof AppError ? err.message : err)
     }
   }
 
@@ -57,7 +58,7 @@ export class ReviewService {
     if (this.inFlight.has(planId)) throw new AppError('ALREADY_RUNNING', 'This plan is already being reviewed.')
     this.inFlight.add(planId)
     this.notify(projectId, taskId)
-    void this.run(plan, task.title, task.description).catch((err) => console.error('[reviews] unexpected failure', err))
+    void this.run(plan, task.title, task.description).catch((err) => log.error('[reviews] unexpected failure', err))
   }
 
   private async run(plan: TaskPlan, title: string, description: string): Promise<void> {
@@ -66,7 +67,7 @@ export class ReviewService {
       const wait = this.deps.retryMs ?? 3000
       for (let i = 0; this.deps.teamLead.isActive(plan.projectId); i++) {
         if (i >= (this.deps.maxWaits ?? 40)) {
-          console.error('[reviews] the Team Lead stayed busy; review skipped')
+          log.error('[reviews] the Team Lead stayed busy; review skipped')
           return
         }
         await new Promise((r) => setTimeout(r, wait))
@@ -82,7 +83,7 @@ export class ReviewService {
         // The plan this turn may record a review for is fixed here, on the server.
         reviewTools: { submitReview: (input) => this.record(plan, input) }
       })
-      if (!outcome.ok) console.error(`[reviews] review of plan ${plan.id} did not complete: ${outcome.code}`)
+      if (!outcome.ok) log.error(`[reviews] review of plan ${plan.id} did not complete: ${outcome.code}`)
     } finally {
       this.inFlight.delete(plan.id)
       this.notify(plan.projectId, plan.taskId)
@@ -100,7 +101,7 @@ export class ReviewService {
     try {
       this.deps.emit({ type: 'plans_changed', projectId, taskId })
     } catch (err) {
-      console.error('[reviews] failed to emit event', err)
+      log.error('[reviews] failed to emit event', err)
     }
   }
 }

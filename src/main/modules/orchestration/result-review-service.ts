@@ -11,6 +11,7 @@ import type { ProjectRepository } from '../projects/repository'
 import type { TaskRepository } from '../tasks/repository'
 import type { ExecutionRepository } from './execution-repository'
 import type { PlanRepository } from './plan-repository'
+import { log } from '../../logging/logger'
 
 const REVIEW_MAX_TURNS = 12
 
@@ -29,7 +30,7 @@ export class ResultReviewService {
       exec: ExecutionRepository
       plans: Pick<PlanRepository, 'getPlan'>
       agents: Pick<AgentRepository, 'get'>
-      worktrees: Pick<GitWorktrees, 'diffText'>
+      worktrees: Pick<GitWorktrees, 'diffText' | 'snapshot'>
       teamLead: Pick<TeamLeadService, 'runTurn' | 'isActive'>
       emit: (event: AppEvent) => void
       retryMs?: number
@@ -47,7 +48,7 @@ export class ResultReviewService {
       if (this.deps.exec.listReviews(result.taskId).some((r) => r.resultId === result.id)) return
       this.request(result.projectId, result.taskId, result.id)
     } catch (err) {
-      console.error('[result-reviews] automatic review not started', err instanceof AppError ? err.message : err)
+      log.error('[result-reviews] automatic review not started', err instanceof AppError ? err.message : err)
     }
   }
 
@@ -63,7 +64,7 @@ export class ResultReviewService {
     if (this.inFlight.has(resultId)) throw new AppError('ALREADY_RUNNING', 'This result is already being reviewed.')
     this.inFlight.add(resultId)
     this.notify(projectId, taskId)
-    void this.run(result, task.title, task.description).catch((err) => console.error('[result-reviews] unexpected failure', err))
+    void this.run(result, task.title, task.description).catch((err) => log.error('[result-reviews] unexpected failure', err))
   }
 
   private async run(result: ExecutionResult, title: string, description: string): Promise<void> {
@@ -71,7 +72,7 @@ export class ResultReviewService {
       const wait = this.deps.retryMs ?? 3000
       for (let i = 0; this.deps.teamLead.isActive(result.projectId); i++) {
         if (i >= (this.deps.maxWaits ?? 40)) {
-          console.error('[result-reviews] the Team Lead stayed busy; review skipped')
+          log.error('[result-reviews] the Team Lead stayed busy; review skipped')
           return
         }
         await new Promise((r) => setTimeout(r, wait))
@@ -81,7 +82,14 @@ export class ResultReviewService {
       const run = this.deps.exec.getRun(result.executionId)
       const plan = run && this.deps.plans.getPlan(run.planId)
       if (!agent || agent.worktreeRemoved || !plan) {
-        console.error('[result-reviews] the worktree or plan is gone; review skipped')
+        log.error('[result-reviews] the worktree or plan is gone; review skipped')
+        return
+      }
+      // A review is only worth having for the code that was submitted: if the worktree already differs from
+      // the stored snapshot, do not review it (the result cannot be accepted in that state anyway).
+      const now = await this.deps.worktrees.snapshot(agent.worktreePath, agent.baseCommit).catch(() => null)
+      if (!now || now.snapshotHash !== result.evidence.snapshotHash) {
+        log.error('[result-reviews] the worktree no longer matches the submitted result; review skipped')
         return
       }
       const diff = await this.deps.worktrees.diffText(agent.worktreePath, agent.baseCommit)
@@ -106,7 +114,7 @@ export class ResultReviewService {
         // The result this turn may record a review for is fixed here, on the server.
         reviewTools: { submitReview: (input) => this.record(result, input) }
       })
-      if (!outcome.ok) console.error(`[result-reviews] review of result ${result.id} did not complete: ${outcome.code}`)
+      if (!outcome.ok) log.error(`[result-reviews] review of result ${result.id} did not complete: ${outcome.code}`)
     } finally {
       this.inFlight.delete(result.id)
       this.notify(result.projectId, result.taskId)
@@ -124,7 +132,7 @@ export class ResultReviewService {
     try {
       this.deps.emit({ type: 'executions_changed', projectId, taskId })
     } catch (err) {
-      console.error('[result-reviews] failed to emit event', err)
+      log.error('[result-reviews] failed to emit event', err)
     }
   }
 }

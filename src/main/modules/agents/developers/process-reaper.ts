@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { log } from '../../../logging/logger'
 
 const run = promisify(execFile)
 const UUID = /^[0-9a-f-]{36}$/
@@ -64,7 +65,7 @@ export function createProcessReaper(deps: ReaperDeps = {}): AgentProcessReaper {
           if (again !== null && isOurs(again)) kill(pid, 'SIGKILL')
         }
       } catch (err) {
-        console.error('[agents] could not stop an orphaned agent process', err)
+        log.error('[agents] could not stop an orphaned agent process', err)
       }
       return 'killed'
     }

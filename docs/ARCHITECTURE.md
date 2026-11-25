@@ -79,8 +79,11 @@ Source is the reference; if this document disagrees with the code, fix the docum
 - **Implemented:** git is read-only (`rev-parse`, `symbolic-ref`), with a 10-second timeout and no shell. Orbyte never runs `git init` or changes repo config.
 - **Limitation:** non-git directories can be registered; worktree isolation will not apply to them.
 
+## Logging and maintenance (Phase 7, Implemented)
+`src/main/logging/logger.ts` is the only logger: main code calls `log.info|warn|error` instead of `console`. `modules/maintenance/` holds `MaintenanceService` (startup sweep, orphan scan and clean, database backup), reached through three channels in `ipc/maintenance.ts`.
+
 ## Planned, not built
-Recovery, logging, and packaging (Phase 7). See `ROADMAP.md`. Integrations (Jira, Linear, GitHub Issues) must sit behind an adapter interface so the task model stays provider-neutral.
+Packaging (deferred): `asarUnpack` for the SDK binary, `node-pty` and the agent server, Electron Fuses, signing. See `ROADMAP.md`. Integrations (Jira, Linear, GitHub Issues) must sit behind an adapter interface so the task model stays provider-neutral.
 
 ## Decisions
 - Electron main as backend, typed IPC, no HTTP server.

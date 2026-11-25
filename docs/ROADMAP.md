@@ -10,7 +10,7 @@ Each phase must leave the app runnable. Do not start a phase without explicit au
 | 4 | Developer agent runtime | **Implemented** (uncommitted; caveats below) | Claude Code CLI in node-pty, git worktrees, xterm.js terminals, agent persistence |
 | 5 | Planning and approval | **Implemented** (uncommitted; caveats below) | Plan capture and versioning, Team Lead review (advice), user approval records, backend-enforced execution gate |
 | 6 | Execution and review | **Implemented** (uncommitted; caveats below) | Gated execution, agent reports as claims plus Orbyte-collected git evidence, Team Lead result review (advice), user acceptance as the only completion path, change requests |
-| 7 | Reliability and polish | Not started | Crash recovery, process cleanup, logging, tests, packaging |
+| 7 | Reliability and polish | **Implemented, packaging deferred** (uncommitted; caveats below) | File logging, startup recovery sweep, orphan cleanup, database backup, two Phase 6 gaps closed. Packaging is **Planned** (deferred by decision: no builds for now) |
 
 ## Phase 1 acceptance (met, with caveats)
 App launches; project registered by token flow and persisted (tested at service/DB level); renderer isolated (verified over DevTools protocol). Caveat: the native folder dialog was not exercised end-to-end.
@@ -46,5 +46,12 @@ Findings that shaped the design: a pre-approved `git diff:*` prefix rule would h
 
 Not verified: how the result dialog looks (the UI was built and compiled, and driven only through the IPC API; its text was not inspected in a browser); an execution agent that runs tests or hits a permission prompt (the real run made a one-line edit and ran no commands); a result with no changes; very large diffs (the truncated path is refused by design but only covered by reasoning); a run interrupted by killing the app (covered by a recovery test with fake processes, not exercised live); approval and acceptance integrity against a local process running as you (deferred by decision, see `SECURITY.md`). Merging the agent's branch is left to you: Orbyte does not commit or merge.
 
-## Open items for Phase 7 and later
-Deciding whether approval and acceptance rows need signing; `repoPath` re-validation before each agent start; how to treat the `!` shell-mode gap; binding a Team Lead review to the exact snapshot it saw; the discard-versus-start race; an Orbyte-run test command (not built by decision); packaging the SDK, `node-pty` and the agent server (Phase 7).
+## Phase 7 acceptance
+Verified with 298 automated tests (logger redaction, sanitizing and rotation, the sweep, orphan scan and clean with real git worktrees, backup, the discard races, review binding) and a live run in the built app: the log file was created under `userData/logs` (mode 600, directory 700); at startup the sweep removed a stray inbox directory, reported two orphan worktrees in one audited `recovery.completed` event, and the renderer received no filesystem paths; cleaning a made-up id did nothing, cleaning the real orphans removed the clean one and kept the one with uncommitted work, and an empty id list was refused.
+
+Scope decisions: packaging is not done by decision (no builds for now; `asarUnpack` for the SDK binary, `node-pty` and the agent server, and Electron Fuses remain **Planned**); the logger is a small file logger with levels, secret redaction and size rotation, not a dependency.
+
+Not verified: the native save dialog for the database backup (the backup itself is tested through the service with a real database); how the Maintenance panel looks; the log's behavior on a full disk; a packaged build; crash recovery beyond what earlier phases verified (the sweep adds orphan cleanup and an audited summary, and was run with a clean database state plus seeded orphans, not after a live kill during an execution).
+
+## Open items after Phase 7
+Deciding whether approval and acceptance rows need signing; `repoPath` re-validation before each agent start; how to treat the `!` shell-mode gap; an Orbyte-run test command (not built by decision); packaging (**Planned**, deferred): `asarUnpack` for the SDK binary, `node-pty` and the agent server, Electron Fuses, signing.

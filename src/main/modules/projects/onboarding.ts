@@ -5,6 +5,7 @@ import type { AppEvent } from '@shared/schemas/team-lead'
 import { ONBOARDING_PROMPT } from '../agents/team-lead/prompt'
 import type { TeamLeadService } from '../agents/team-lead/service'
 import type { ProjectRepository } from './repository'
+import { log } from '../../logging/logger'
 
 const ONBOARDING_MAX_TURNS = 12
 
@@ -63,7 +64,7 @@ export class OnboardingService {
     if (!started) throw new AppError('NOT_FOUND', 'Project not found.')
     this.safeEmit(projectId)
     // run() handles its own failures; the catch is a last-resort guard against an unhandled rejection.
-    void this.run(started).catch((err) => console.error('[onboarding] unexpected failure', err))
+    void this.run(started).catch((err) => log.error('[onboarding] unexpected failure', err))
     return started
   }
 
@@ -90,7 +91,7 @@ export class OnboardingService {
         this.deps.projects.setOnboarding(id, 'failed', { ...data, error: { code: outcome.code, message: outcome.message } }, 'onboarding.failed', { code: outcome.code })
       }
     } catch (err) {
-      console.error(`[onboarding] failed for project ${id}`, err)
+      log.error(`[onboarding] failed for project ${id}`, err)
       try {
         this.deps.projects.setOnboarding(
           id,
@@ -100,7 +101,7 @@ export class OnboardingService {
           { code: 'ONBOARDING_ERROR' }
         )
       } catch (inner) {
-        console.error(`[onboarding] could not record failure for project ${id}`, inner)
+        log.error(`[onboarding] could not record failure for project ${id}`, inner)
       }
     }
     this.safeEmit(id)
@@ -110,7 +111,7 @@ export class OnboardingService {
     try {
       this.deps.emit({ type: 'project_updated', projectId })
     } catch (err) {
-      console.error('[onboarding] failed to emit event', err)
+      log.error('[onboarding] failed to emit event', err)
     }
   }
 }

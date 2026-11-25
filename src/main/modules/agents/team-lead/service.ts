@@ -6,6 +6,7 @@ import type { ChatRepository } from './chat-repository'
 import { classifyError, mapSdkMessage } from './events'
 import type { TeamLeadRunner } from './runner'
 import type { TeamLeadReviewTools, TeamLeadTaskTools } from './tools'
+import { log } from '../../../logging/logger'
 
 export type TurnPurpose = 'chat' | 'onboarding' | 'review'
 export type TurnOutcome = { ok: true; text: string } | { ok: false; code: string; message: string; partial?: string }
@@ -116,7 +117,7 @@ export class TeamLeadService {
     try {
       return await this.runTurnInner(opts)
     } catch (err) {
-      console.error(`[team-lead] unexpected failure for project ${opts.projectId}`, err)
+      log.error(`[team-lead] unexpected failure for project ${opts.projectId}`, err)
       const outcome = { ok: false as const, code: 'INTERNAL', message: publicMessage('INTERNAL') }
       this.emit({ type: 'turn_error', projectId: opts.projectId, turnId: opts.turnId, code: outcome.code, message: outcome.message })
       return outcome
@@ -238,7 +239,7 @@ export class TeamLeadService {
               result = { ok: true, text: streamed || assistantTexts.join('\n\n') || sig.text }
               break
             case 'error':
-              console.error(`[team-lead] ${sig.code} for project ${projectId}: ${sig.message}`)
+              log.error(`[team-lead] ${sig.code} for project ${projectId}: ${sig.message}`)
               result = { ok: false, code: sig.code, message: publicMessage(sig.code) }
               break
           }
@@ -250,7 +251,7 @@ export class TeamLeadService {
       if (!result) {
         const raw = err instanceof Error ? err.message : String(err)
         const code = classifyError(raw)
-        console.error(`[team-lead] ${code} for project ${projectId}: ${raw}`)
+        log.error(`[team-lead] ${code} for project ${projectId}: ${raw}`)
         return { ok: false, code, message: publicMessage(code) }
       }
     }
@@ -270,7 +271,7 @@ export class TeamLeadService {
     try {
       this.deps.emit(event)
     } catch (err) {
-      console.error('[team-lead] failed to emit event', err)
+      log.error('[team-lead] failed to emit event', err)
     }
   }
 

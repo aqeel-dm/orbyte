@@ -7,6 +7,7 @@ import type { ProjectService } from '../modules/projects/service'
 import type { TeamLeadService } from '../modules/agents/team-lead/service'
 import type { AppEvent } from '@shared/schemas/team-lead'
 import { handle } from './handle'
+import { log } from '../logging/logger'
 
 export function registerProjectHandlers(deps: {
   projects: ProjectService
@@ -20,7 +21,7 @@ export function registerProjectHandlers(deps: {
     try {
       emit({ type: 'project_updated', projectId: project.id })
     } catch (err) {
-      console.error('[ipc] failed to emit project_updated', err)
+      log.error('[ipc] failed to emit project_updated', err)
     }
     return project
   }

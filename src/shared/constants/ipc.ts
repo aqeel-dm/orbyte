@@ -58,6 +58,11 @@ export const IPC = {
     requestChanges: 'executions:requestChanges',
     requestReview: 'executions:requestReview'
   },
+  maintenance: {
+    scan: 'maintenance:scan',
+    cleanOrphans: 'maintenance:cleanOrphans',
+    backupDatabase: 'maintenance:backupDatabase'
+  },
   /** Main -> renderer push channel (one fixed channel; payloads are validated). */
   events: {
     app: 'events:app',

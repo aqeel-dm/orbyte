@@ -1,4 +1,5 @@
 import type { TerminalEvent } from '@shared/schemas/agent'
+import { log } from '../../../logging/logger'
 
 /**
  * Tracks which windows are attached to which agent's terminal. Output is delivered ONLY to
@@ -42,7 +43,7 @@ export class TerminalHub {
       try {
         this.send(windowId, { agentId, data })
       } catch (err) {
-        console.error('[terminal] failed to deliver output', err)
+        log.error('[terminal] failed to deliver output', err)
       }
     }
   }

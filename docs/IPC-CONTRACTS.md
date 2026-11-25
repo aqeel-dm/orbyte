@@ -53,6 +53,10 @@ Invoke channels (renderer to main), defined in `src/shared/constants/ipc.ts`; th
 | `executions.requestChanges(projectId, taskId, resultId, feedback)` | `executions:requestChanges` | feedback 1-2000 characters | `DeveloperAgent`. Records a single-use change request and starts a revision run |
 | `executions.requestReview(projectId, taskId, resultId)` | `executions:requestReview` | ids | `null`. Asks the Team Lead for advice on the current result |
 
+| `maintenance.scan()` | `maintenance:scan` | none | `{orphanWorktrees: [{id, projectId, projectName, name}]}`: worktree directories in Orbyte's own directory that no agent owns. Opaque ids, no paths. Read-only |
+| `maintenance.cleanOrphans(ids)` | `maintenance:cleanOrphans` | 1-50 ids | `{removed, skipped: [{id, reason}]}`. Ids are matched against a fresh scan; a worktree with uncommitted changes, one outside the worktree directory, or one of an unknown project is kept |
+| `maintenance.backupDatabase()` | `maintenance:backupDatabase` | none | `{saved}`. A native save dialog is shown by main; the renderer supplies no path |
+
 There is deliberately no channel that passes an approval, authorizes a revision, or marks a task completed: `authorizeExecution` and `authorizeRevision` are internal to main.
 
 ## Push events (main to renderer)

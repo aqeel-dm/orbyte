@@ -5,6 +5,7 @@ import type { TaskRepository } from '../tasks/repository'
 import type { TaskService } from '../tasks/service'
 import { planHash, renderPlan } from './plan-hash'
 import type { PlanRepository } from './plan-repository'
+import { log } from '../../logging/logger'
 
 export type IngestResult =
   | { accepted: true; plan: TaskPlan; invalidatedApproval: boolean }
@@ -40,7 +41,7 @@ export class PlanService {
     if (task.status !== 'planning' && task.status !== 'awaiting_approval') return { accepted: false, reason: 'task_not_planning' }
 
     if (this.deps.plans.listPlans(task.id).length >= MAX_PLAN_VERSIONS) {
-      console.warn(`[plans] version limit reached for task ${task.id}; plan ignored`)
+      log.warn(`[plans] version limit reached for task ${task.id}; plan ignored`)
       return { accepted: false, reason: 'too_many_versions' }
     }
     const hash = planHash(content)
@@ -55,7 +56,7 @@ export class PlanService {
       try {
         this.deps.tasks.transitionSystem(task.projectId, task.id, 'awaiting_approval')
       } catch (err) {
-        console.error('[plans] could not move the task to awaiting approval', err)
+        log.error('[plans] could not move the task to awaiting approval', err)
       }
     }
     this.safe(() => this.deps.emit({ type: 'plans_changed', projectId: task.projectId, taskId: task.id }))
@@ -67,7 +68,7 @@ export class PlanService {
     try {
       fn()
     } catch (err) {
-      console.error('[plans] callback failed', err)
+      log.error('[plans] callback failed', err)
     }
   }
 }

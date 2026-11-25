@@ -46,5 +46,8 @@ Uses the real `claude` CLI (and your usage). Use a **scratch git repository with
 ## End-to-end check of execution and review
 Same setup as the agents check (scratch repo, real `claude`, real Team Lead, uses your usage). Drive over the DevTools protocol: create and ready a small task, `agents.start`, wait for the plan, `plans.approve`, then `executions.start`. Answer the folder-trust prompt (`agents.write`) if shown. Expect: the task is `in_progress`; after the agent calls `submit_result` the task is `in_review`, `executions.get` shows the evidence and the Team Lead's review; `executions.accept` before a review exists is refused; changing a file in the worktree makes `accept` fail with `CODE_CHANGED`; `executions.requestChanges` starts a second run; `accept` on the current, reviewed result completes the task. Agent commands that need permission wait in its terminal.
 
+## Logs and backups
+Logs: `<userData>/logs/orbyte.log` (plus `orbyte.1.log` to `orbyte.3.log`). In development the same lines also print to the console. The dashboard's Maintenance panel backs up the database and removes leftover worktrees.
+
 ## Running the app headlessly for checks
 `electron . --remote-debugging-port=9333` after `pnpm build`, then inspect over the DevTools protocol (this was how the renderer isolation was verified).

@@ -2,6 +2,7 @@ import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { ZodError, type ZodType } from 'zod'
 import { AppError, fail, ok, type Result } from '@shared/types/result'
 import { isTrustedFrame } from '../app/navigation-policy'
+import { log } from '../logging/logger'
 
 let appEntryUrl: string | null = null
 
@@ -31,7 +32,7 @@ export function handle<I, O>(
     } catch (err) {
       if (err instanceof ZodError) return fail('INVALID_INPUT', err.issues.map((i) => i.message).join('; '))
       if (err instanceof AppError) return fail(err.code, err.message)
-      console.error(`[ipc] ${channel} failed`, err)
+      log.error(`[ipc] ${channel} failed`, err)
       return fail('INTERNAL', 'Unexpected error. See the application log.')
     }
   })

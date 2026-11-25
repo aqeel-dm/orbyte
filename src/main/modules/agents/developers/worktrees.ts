@@ -5,6 +5,7 @@ import { dirname, join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { Evidence } from '@shared/schemas/execution'
 import { AppError } from '@shared/types/result'
+import { log } from '../../../logging/logger'
 
 const run = promisify(execFile)
 
@@ -82,14 +83,19 @@ export class GitWorktrees {
       await mkdir(dirname(worktreePath), { recursive: true })
       await this.git(repoPath, ['worktree', 'add', '-b', branch, '--', worktreePath, baseCommit])
     } catch (err) {
-      console.error('[worktrees] add failed', err)
+      log.error('[worktrees] add failed', err)
       throw new AppError('WORKTREE_FAILED', 'Could not create an isolated worktree for the agent. See the application log.')
     }
   }
 
   /** True if the worktree has uncommitted or untracked changes. */
   async hasChanges(worktreePath: string): Promise<boolean> {
-    return (await this.git(worktreePath, ['status', '--porcelain'])).length > 0
+    return (await this.git(worktreePath, ['status', '--porcelain'], { isolated: true })).length > 0
+  }
+
+  /** True if HEAD has commits that no branch or remote ref contains (for example from a detached HEAD), so removing the worktree would strand them in the reflog. */
+  async hasUnreferencedCommits(worktreePath: string): Promise<boolean> {
+    return (await this.git(worktreePath, ['rev-list', '-n', '1', 'HEAD', '--not', '--branches', '--remotes', '--'], { isolated: true })).length > 0
   }
 
   /**
@@ -219,7 +225,7 @@ export class GitWorktrees {
     try {
       await this.git(repoPath, ['worktree', 'prune'])
     } catch (err) {
-      console.error('[worktrees] prune failed', err)
+      log.error('[worktrees] prune failed', err)
     }
   }
 
@@ -227,7 +233,7 @@ export class GitWorktrees {
     try {
       await this.git(repoPath, ['worktree', 'remove', ...(force ? ['--force'] : []), '--', worktreePath])
     } catch (err) {
-      console.error('[worktrees] remove failed', err)
+      log.error('[worktrees] remove failed', err)
       throw new AppError('WORKTREE_FAILED', 'Could not remove the worktree. See the application log.')
     }
   }

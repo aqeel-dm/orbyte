@@ -81,6 +81,10 @@ export class AgentRepository {
       .map(toRecord)
   }
 
+  listAll(): AgentRecord[] {
+    return this.db.select().from(developerAgents).all().map(toRecord)
+  }
+
   /** Every agent that works in the same worktree (a planning agent and the execution agent that follows it share one). */
   listByWorktree(worktreePath: string): AgentRecord[] {
     return this.db.select().from(developerAgents).where(eq(developerAgents.worktreePath, worktreePath)).all().map(toRecord)

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useProjects } from '@/hooks/use-projects'
 import type { TaskSummary } from '@shared/schemas/task'
+import { MaintenancePanel } from '@/features/maintenance/maintenance-panel'
 import { ProjectCard } from '@/features/projects/project-card'
 import { RegisterProjectDialog } from '@/features/projects/register-project-dialog'
 
@@ -83,6 +84,8 @@ export function DashboardPage() {
       ) : (
         <div className="grid gap-3 md:grid-cols-2">{projects.map((p) => <ProjectCard key={p.id} project={p} onArchive={archive} onRestore={restore} />)}</div>
       )}
+
+      <MaintenancePanel />
 
       <RegisterProjectDialog open={open} onOpenChange={setOpen} onRegistered={refresh} />
     </div>

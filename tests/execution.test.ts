@@ -5,6 +5,7 @@ import { GitWorktrees } from '../src/main/modules/agents/developers/worktrees'
 import { CompletionService } from '../src/main/modules/orchestration/completion-service'
 import { ExecutionRepository } from '../src/main/modules/orchestration/execution-repository'
 import { ExecutionService } from '../src/main/modules/orchestration/execution-service'
+import { ResultReviewService } from '../src/main/modules/orchestration/result-review-service'
 import { requestChangesInputSchema } from '../src/shared/schemas/execution'
 import { AppError } from '../src/shared/types/result'
 import { makeAgentStack } from './helpers'
@@ -188,6 +189,32 @@ describe('review fixes', () => {
     require('node:fs').mkdirSync(join(cwd, 'fake-git'))
     writeFileSync(join(cwd, '.git'), 'gitdir: ' + join(cwd, 'fake-git') + '\n')
     expect(await code(() => w.snapshot(cwd, rec.baseCommit))).toBe('WORKTREE_FAILED')
+  })
+})
+
+describe('result review is bound to the submitted code', () => {
+  const reviewer = (c: Ctx, calls: unknown[]) => new ResultReviewService({
+    projects: c.s.projects, taskRepo: c.s.taskRepo, exec: c.exec, plans: c.s.planRepo, agents: c.s.agentRepo, worktrees: new GitWorktrees(),
+    teamLead: { isActive: () => false, runTurn: async (opts: unknown) => { calls.push(opts); return { ok: true } } } as never,
+    emit: () => undefined, retryMs: 5
+  })
+  const settle = async (rr: ResultReviewService, id: string) => { await c0(); while (rr.isInProgress(id)) await new Promise((r) => setTimeout(r, 10)) }
+  const c0 = () => new Promise((r) => setTimeout(r, 20))
+
+  it('reviews the code when it matches the result, and skips the review when the worktree has changed', async () => {
+    const c = await approved()
+    const agent = await c.execution.start(c.s.project.id, c.task.id)
+    await agentFinishes(c, agent.id, 1)
+    const result = c.exec.latestResult(c.task.id)!
+    const calls: unknown[] = []
+    const rr = reviewer(c, calls)
+    rr.request(c.s.project.id, c.task.id, result.id)
+    await settle(rr, result.id)
+    expect(calls).toHaveLength(1)
+    writeFileSync(join(c.s.pty.procs[1]!.opts.cwd, 'login.ts'), 'export const changed = true\n')
+    rr.request(c.s.project.id, c.task.id, result.id)
+    await settle(rr, result.id)
+    expect(calls).toHaveLength(1) // not asked again: the code is no longer what was submitted
   })
 })
 

@@ -20,6 +20,9 @@ import { GitWorktrees } from './modules/agents/developers/worktrees'
 import { registerAgentHandlers } from './ipc/agents'
 import { registerPlanHandlers } from './ipc/plans'
 import { registerExecutionHandlers } from './ipc/executions'
+import { registerMaintenanceHandlers } from './ipc/maintenance'
+import { initLogging } from './logging/logger'
+import { MaintenanceService } from './modules/maintenance/service'
 import { CompletionService } from './modules/orchestration/completion-service'
 import { ExecutionRepository } from './modules/orchestration/execution-repository'
 import { ExecutionService } from './modules/orchestration/execution-service'
@@ -41,15 +44,19 @@ import { installAppSecurity } from './app/security'
 import { createMainWindow, getAppEntryUrl } from './app/window'
 import { IPC } from '@shared/constants/ipc'
 import type { AppEvent } from '@shared/schemas/team-lead'
+import { log } from './logging/logger'
 
 let dbHandle: DbHandle | undefined
 let teamLeadService: TeamLeadService | undefined
 let agentService: AgentService | undefined
 let quitting = false
 
-process.on('unhandledRejection', (reason) => console.error('[main] unhandled rejection', reason))
+process.on('unhandledRejection', (reason) => log.error('[main] unhandled rejection', reason))
+process.on('uncaughtException', (err) => log.error('[main] uncaught exception', err))
 
 async function bootstrap(): Promise<void> {
+  initLogging(join(app.getPath('userData'), 'logs'), { mirror: !app.isPackaged })
+  log.info(`[main] starting Orbyte ${app.getVersion()}`)
   const migrations = app.isPackaged ? join(process.resourcesPath, 'drizzle') : join(app.getAppPath(), 'drizzle')
   dbHandle = openDatabase(join(app.getPath('userData'), 'orbyte.db'), migrations)
 
@@ -135,6 +142,9 @@ async function bootstrap(): Promise<void> {
   const hub = new TerminalHub((windowId, event) => webContents.fromId(windowId)?.send(IPC.events.terminal, event))
   app.on('web-contents-created', (_e, contents) => contents.once('destroyed', () => hub.detachAll(contents.id)))
   const worktrees = new GitWorktrees()
+  const inboxRoot = join(app.getPath('userData'), 'plan-inbox')
+  const inbox = new AgentInbox(inboxRoot)
+  const worktreeRoot = join(app.getPath('userData'), 'worktrees')
   let execution: ExecutionService | undefined
   const agents = (agentService = new AgentService({
     projects: projectRepo,
@@ -146,7 +156,7 @@ async function bootstrap(): Promise<void> {
     hub,
     resolveClaude: () => resolveClaudeBinary({ env: process.env, home: homedir() }),
     reaper: createProcessReaper(),
-    inbox: new AgentInbox(join(app.getPath('userData'), 'plan-inbox')),
+    inbox,
     // Claude Code starts this script (Electron run as plain Node) to give the agent its submit_plan tool.
     agentServer: { command: process.execPath, scriptPath: join(__dirname, 'agent-server.js') },
     onPlan: (agentId, plan) => void planService.ingest(agentId, plan),
@@ -154,11 +164,11 @@ async function bootstrap(): Promise<void> {
     onResult: async (agentId, result) => void (await execution?.onResult(agentId, result)),
     onExecutionAgentEnded: (agent, status) => execution?.onAgentEnded(agent, status),
     env: () => process.env,
-    worktreeRoot: join(app.getPath('userData'), 'worktrees'),
+    worktreeRoot,
     logDir: join(app.getPath('userData'), 'terminal-logs'),
     emit
   }))
-  await agents.recoverInterrupted()
+  const interruptedAgents = await agents.recoverInterrupted()
 
   const resultReviews = new ResultReviewService({ projects: projectRepo, taskRepo, exec: execRepo, plans: planRepo, agents: agentRepo, worktrees, teamLead, emit })
   execution = new ExecutionService({
@@ -172,11 +182,24 @@ async function bootstrap(): Promise<void> {
     reviewInProgress: (resultId) => resultReviews.isInProgress(resultId)
   })
   completionRef = completion
-  execution.recoverInterrupted()
+  const interruptedRuns = execution.recoverInterrupted()
+  const maintenance = new MaintenanceService({
+    db: dbHandle.db,
+    backupTo: async (dest) => void (await dbHandle?.raw.backup(dest)),
+    projects: projectRepo,
+    agents: agentRepo,
+    inbox,
+    inboxRoot,
+    worktrees,
+    worktreeRoot
+  })
+  // Awaited before any handler is registered, so a freshly started agent's inbox cannot be mistaken for an orphan.
+  await maintenance.sweepAtStartup({ interruptedAgents, interruptedRuns })
 
   registerAgentHandlers({ agents })
   registerPlanHandlers({ approvals, reviews })
   registerExecutionHandlers({ execution, completion, resultReviews })
+  registerMaintenanceHandlers({ maintenance })
   registerTaskHandlers({ tasks: taskService, proposals: proposalService, activity: new ActivityRepository(dbHandle.db), projects: projectService })
   registerProjectHandlers({
     projects: projectService,
@@ -197,7 +220,7 @@ else {
     win?.focus()
   })
   void app.whenReady().then(bootstrap).catch((err) => {
-    console.error('[main] startup failed', err)
+    log.error('[main] startup failed', err)
     dialog.showErrorBox('Orbyte could not start', 'The database or application failed to initialize. See the application log for details.')
     app.exit(1)
   })
@@ -215,7 +238,7 @@ else {
     event.preventDefault()
     // Stop Team Lead turns and developer agent processes before the database closes.
     void Promise.allSettled([teamLeadService?.shutdown(), agentService?.shutdown()])
-      .catch((err) => console.error('[main] shutdown failed', err))
+      .catch((err) => log.error('[main] shutdown failed', err))
       .finally(() => {
         dbHandle?.close()
         app.quit()

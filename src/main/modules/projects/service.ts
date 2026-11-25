@@ -5,6 +5,7 @@ import { AppError } from '@shared/types/result'
 import type { DiscoveryResult } from '@shared/schemas/onboarding'
 import type { PickDirectoryResult, Project, RegisterProjectInput, RepoInspection } from '@shared/schemas/project'
 import type { ProjectRepository } from './repository'
+import { log } from '../../logging/logger'
 
 const TOKEN_TTL_MS = 10 * 60_000
 export const MAX_PENDING_TOKENS = 20
@@ -118,7 +119,7 @@ export class ProjectService {
     try {
       this.deps.onArchive?.(id)
     } catch (err) {
-      console.error('[projects] onArchive failed', err)
+      log.error('[projects] onArchive failed', err)
     }
     return project
   }

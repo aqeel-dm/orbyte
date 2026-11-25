@@ -6,6 +6,7 @@ import type { ProjectRepository } from '../projects/repository'
 import { topologicalOrder, validateTaskDependencies } from '../tasks/dependencies'
 import type { TaskRepository } from '../tasks/repository'
 import type { ProposalRepository } from './proposal-repository'
+import { log } from '../../logging/logger'
 
 export const MAX_PENDING_PROPOSALS = 5
 
@@ -141,7 +142,7 @@ export class ProposalService {
     try {
       this.deps.emit(event)
     } catch (err) {
-      console.error('[proposals] failed to emit event', err)
+      log.error('[proposals] failed to emit event', err)
     }
   }
 }

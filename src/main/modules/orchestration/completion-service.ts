@@ -8,6 +8,7 @@ import type { ProjectRepository } from '../projects/repository'
 import type { TaskRepository } from '../tasks/repository'
 import type { TaskService } from '../tasks/service'
 import type { ExecutionRepository } from './execution-repository'
+import { log } from '../../logging/logger'
 
 export type CompletionVerdict = { ok: true; decision: ResultDecision; result: ExecutionResult } | { ok: false; blockers: string[] }
 
@@ -188,7 +189,7 @@ export class CompletionService {
       this.deps.emit({ type: 'executions_changed', projectId, taskId })
       this.deps.emit({ type: 'tasks_changed', projectId })
     } catch (err) {
-      console.error('[completion] failed to emit event', err)
+      log.error('[completion] failed to emit event', err)
     }
   }
 }

@@ -3,6 +3,7 @@ import { submitReviewInputSchema, type SubmitReviewInput } from '@shared/schemas
 import { proposeTasksInputSchema, type ProposeTasksInput } from '@shared/schemas/task'
 import type { TaskDigest } from '../../tasks/service'
 import type { ClaudeAgentSdk } from './sdk-loader'
+import { log } from '../../../logging/logger'
 
 /** In-process tools exposed to the Team Lead (SDK MCP server named "orbyte"). */
 export const TEAM_LEAD_TOOL_NAMES = ['mcp__orbyte__list_tasks', 'mcp__orbyte__propose_tasks'] as const
@@ -40,7 +41,7 @@ export function makeToolHandlers(tools: TeamLeadTaskTools) {
         return text(JSON.stringify({ tasks, total, truncated: total > tasks.length }))
       } catch (err) {
         if (err instanceof AppError) return text(err.message, true)
-        console.error('[team-lead] list_tasks failed', err)
+        log.error('[team-lead] list_tasks failed', err)
         return text('The task list could not be read.', true)
       }
     },
@@ -55,7 +56,7 @@ export function makeToolHandlers(tools: TeamLeadTaskTools) {
         return text(`Proposal recorded for the user's review (${count} tasks). Nothing has been created: tasks exist only if the user approves. Do not claim they were created.`)
       } catch (err) {
         if (err instanceof AppError) return text(err.message, true)
-        console.error('[team-lead] propose_tasks failed', err)
+        log.error('[team-lead] propose_tasks failed', err)
         return text('The proposal could not be recorded.', true)
       }
     }
@@ -74,7 +75,7 @@ export function makeReviewHandlers(tools: TeamLeadReviewTools) {
         return text('Review recorded as advice for the user. You cannot approve or reject the plan; the user decides. Stop now.')
       } catch (err) {
         if (err instanceof AppError) return text(err.message, true)
-        console.error('[team-lead] submit_review failed', err)
+        log.error('[team-lead] submit_review failed', err)
         return text('The review could not be recorded.', true)
       }
     }

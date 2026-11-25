@@ -12,6 +12,7 @@ import type { TaskService } from '../tasks/service'
 import type { ApprovalService } from './approval-service'
 import type { ExecutionRepository } from './execution-repository'
 import type { PlanRepository } from './plan-repository'
+import { log } from '../../logging/logger'
 
 /**
  * Runs approved plans. Starting goes through the gate (`ApprovalService.authorizeExecution`), which
@@ -129,7 +130,7 @@ export class ExecutionService {
         try {
           this.deps.tasks.transitionSystem(projectId, taskId, 'in_review')
         } catch (inner) {
-          console.error('[execution] could not return the task to review', inner)
+          log.error('[execution] could not return the task to review', inner)
         }
         this.deps.taskRepo.setExecutionState(taskId, { executionStatus: 'succeeded' })
         this.changed(projectId, taskId)
@@ -163,7 +164,7 @@ export class ExecutionService {
       evidence = await this.deps.worktrees.snapshot(agent.worktreePath, agent.baseCommit)
     } catch (err) {
       // Fail closed and visibly: no result was recorded, so the run fails and the task returns to the approval gate.
-      console.error('[execution] could not collect evidence for a result; the run failed', err)
+      log.error('[execution] could not collect evidence for a result; the run failed', err)
       if (this.deps.exec.getRun(run.id)?.status === 'running') {
         this.deps.exec.finishRun(run.id, 'failed')
         this.deps.agentService.stopAgentById(agentId)
@@ -181,7 +182,7 @@ export class ExecutionService {
     try {
       this.deps.tasks.transitionSystem(run.projectId, run.taskId, 'in_review')
     } catch (err) {
-      console.error('[execution] could not move the task to review', err)
+      log.error('[execution] could not move the task to review', err)
       this.backToGate(run.projectId, run.taskId, 'failed')
     }
     this.deps.agentService.stopAgentById(agentId) // freeze the work so what is reviewed is what stays
@@ -189,7 +190,7 @@ export class ExecutionService {
     try {
       this.deps.onResultSubmitted?.(result)
     } catch (err) {
-      console.error('[execution] result callback failed', err)
+      log.error('[execution] result callback failed', err)
     }
   }
 
@@ -203,11 +204,13 @@ export class ExecutionService {
   }
 
   /** After a restart no process survived: any run still marked running ended without a result. */
-  recoverInterrupted(): void {
-    for (const run of this.deps.exec.listRunning()) {
+  recoverInterrupted(): number {
+    const running = this.deps.exec.listRunning()
+    for (const run of running) {
       this.deps.exec.finishRun(run.id, 'stopped')
       this.backToGate(run.projectId, run.taskId, 'interrupted')
     }
+    return running.length
   }
 
   /**
@@ -221,7 +224,7 @@ export class ExecutionService {
         this.deps.tasks.transitionSystem(projectId, taskId, 'awaiting_approval')
         this.deps.taskRepo.setPlanState(taskId, { approvalStatus: 'pending' })
       } catch (err) {
-        console.error('[execution] could not return the task to the approval gate', err)
+        log.error('[execution] could not return the task to the approval gate', err)
       }
     }
     if (task) this.deps.taskRepo.setExecutionState(taskId, { executionStatus })
@@ -240,7 +243,7 @@ export class ExecutionService {
       this.deps.emit({ type: 'executions_changed', projectId, taskId })
       this.deps.emit({ type: 'tasks_changed', projectId })
     } catch (err) {
-      console.error('[execution] failed to emit event', err)
+      log.error('[execution] failed to emit event', err)
     }
   }
 }
