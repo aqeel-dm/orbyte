@@ -40,6 +40,8 @@ import { setTrustedAppEntry } from './ipc/handle'
 import { registerProjectHandlers } from './ipc/projects'
 import { registerTaskHandlers } from './ipc/tasks'
 import { loadRowSigner } from './security/row-signer'
+import { UsageService } from './modules/usage/usage-service'
+import { claudeConfigDir } from './modules/usage/transcript-usage'
 import { Notifier } from './notifications/notifier'
 import { DecisionRepository } from './modules/orchestration/decision-repository'
 import { ProposalRepository } from './modules/orchestration/proposal-repository'
@@ -81,6 +83,7 @@ async function bootstrap(): Promise<void> {
   let notifier: Notifier | undefined
   const taskRepo = new TaskRepository(dbHandle.db)
   // Stopping an agent when the user cancels or blocks its task: the service is created just below.
+  let usageRef: UsageService | undefined
   let approvalsRef: { onTaskLeft(taskId: string): void } | undefined
   let completionRef: { onTaskLeft(taskId: string): void } | undefined
   const taskService = new TaskService({
@@ -106,6 +109,7 @@ async function bootstrap(): Promise<void> {
     chat: new ChatRepository(dbHandle.db),
     runner: createSdkRunner(),
     emit,
+    recordUsage: (projectId, sessionId, r) => usageRef?.recordTeamLead(projectId, sessionId, r),
     // The project id is bound here, on the server. The model never chooses which project a tool acts on.
     taskToolsFor: (projectId) => ({
       listTasks: () => taskService.digest(projectId),
@@ -117,6 +121,8 @@ async function bootstrap(): Promise<void> {
   const signer = loadRowSigner(join(app.getPath('userData'), 'signing.key'), safeStorage)
   const planRepo = new PlanRepository(dbHandle.db, signer)
   const agentRepo = new AgentRepository(dbHandle.db)
+  const usage = new UsageService({ db: dbHandle.db, projects: projectRepo, agents: agentRepo, configDir: () => claudeConfigDir(process.env, homedir()) })
+  usageRef = usage
   let reviews: ReviewService | undefined
   const planService = new PlanService({
     agents: agentRepo,
@@ -223,6 +229,7 @@ async function bootstrap(): Promise<void> {
   }
   registerMaintenanceHandlers({
     maintenance,
+    usage,
     systemCheck: () => checkSystem({
       gitVersion: () => probe('git', ['--version']),
       resolveClaude: () => resolveClaudeBinary({ env: process.env, home: homedir() }),

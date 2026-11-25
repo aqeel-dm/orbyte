@@ -55,6 +55,7 @@ const api: OrbyteApi = {
     resize: (projectId, agentId, cols, rows) => ipcRenderer.invoke(IPC.agents.resize, { projectId, agentId, cols, rows }),
     summary: () => ipcRenderer.invoke(IPC.agents.summary)
   },
+  usage: { get: (projectId) => ipcRenderer.invoke(IPC.usage.get, { projectId }) },
   system: { check: () => ipcRenderer.invoke(IPC.system.check) },
   maintenance: {
     scan: () => ipcRenderer.invoke(IPC.maintenance.scan),

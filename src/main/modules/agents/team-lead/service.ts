@@ -39,6 +39,8 @@ export interface TeamLeadDeps {
   taskToolsFor?: (projectId: string) => TeamLeadTaskTools
   turnTimeoutMs?: number
   chatMaxTurns?: number
+  /** Receives the SDK's reported usage (an estimate), keyed by session. */
+  recordUsage?: (projectId: string, sessionId: string, r: { costUsd: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number }) => void
 }
 
 interface TurnState {
@@ -191,6 +193,7 @@ export class TeamLeadService {
     if (project.repoSettingsTrust === 'unset') return { ok: false, code: 'TRUST_REQUIRED', message: publicMessage('TRUST_REQUIRED') }
 
     let streamed = ''
+    let sessionId: string | null = resumeSessionId
     const assistantTexts: string[] = []
     let result: TurnOutcome | null = null
     const partial = (): string => streamed || assistantTexts.join('\n\n')
@@ -214,6 +217,7 @@ export class TeamLeadService {
         for (const sig of mapSdkMessage(raw)) {
           switch (sig.kind) {
             case 'session':
+              sessionId = sig.sessionId
               if (opts.purpose !== 'review' && sig.sessionId !== this.deps.projects.get(projectId)?.teamLeadSessionId) {
                 this.deps.projects.setTeamLeadSession(projectId, sig.sessionId)
               }
@@ -235,6 +239,11 @@ export class TeamLeadService {
             case 'tool':
               this.emit({ type: 'tool_activity', projectId, turnId, tool: sig.tool })
               break
+            case 'usage': {
+              const sid = sig.sessionId ?? sessionId
+              if (sid) this.deps.recordUsage?.(projectId, sid, { costUsd: sig.costUsd, inputTokens: sig.inputTokens, outputTokens: sig.outputTokens, cacheReadTokens: sig.cacheReadTokens, cacheCreationTokens: sig.cacheCreationTokens })
+              break
+            }
             case 'success':
               result = { ok: true, text: streamed || assistantTexts.join('\n\n') || sig.text }
               break

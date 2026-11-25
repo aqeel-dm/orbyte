@@ -66,7 +66,8 @@ const review = (c: Ctx) => {
   return result
 }
 
-describe('execution', () => {
+// Real git worktrees and processes: the default 5 s limit is too tight when the whole suite runs in parallel.
+describe('execution', { timeout: 30_000 }, () => {
   it('start refuses without an approval, and starting spends the approval', async () => {
     const s = makeAgentStack(); s.pty.autoExit = true
     const exec = new ExecutionRepository(s.handle.db)

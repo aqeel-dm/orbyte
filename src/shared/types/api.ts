@@ -5,6 +5,7 @@ import type { ExecutionBundle, ResultChanges, ResultDecision, TestRun } from '..
 import type { PlanApproval, PlanBundle } from '../schemas/plan'
 import type { AgentSummary, AttachResult, DeveloperAgent, TerminalEvent } from '../schemas/agent'
 import type { ActivityEvent, DecisionItem, RecentActivityEvent, CreateTaskInput, ProposalItem, Task, TaskProposal, TaskSummary, UpdateTaskInput } from '../schemas/task'
+import type { UsageSummary } from '../schemas/usage'
 import type { SystemCheck } from '../schemas/system'
 import type { BackupResult, CleanOrphansResult, MaintenanceScan } from '../schemas/maintenance'
 import type { TaskStatus } from '../task-state'
@@ -84,6 +85,10 @@ export interface OrbyteApi {
     revoke(projectId: string, taskId: string): Promise<Result<PlanBundle>>
     /** Asks the Team Lead to (re)review the current plan. Advice only. */
     requestReview(projectId: string, taskId: string, planId: string): Promise<Result<null>>
+  }
+  usage: {
+    /** Token usage and the SDK's cost estimate for one project (Team Lead), plus tokens read from agent transcripts. Estimates, not a bill. */
+    get(projectId: string): Promise<Result<UsageSummary>>
   }
   system: {
     /** What Orbyte needs from this computer (git, the claude command, secure key storage). Read-only. */

@@ -5,7 +5,7 @@ SQLite file `orbyte.db` in `app.getPath('userData')`, accessed with better-sqlit
 ## Setup (Implemented)
 `openDatabase(file, migrationsFolder)` in `client.ts` creates the directory, opens the DB, sets `journal_mode = WAL` and `foreign_keys = ON`, and runs Drizzle migrations. Dev migrations folder: `<appPath>/drizzle`. Packaged: `process.resourcesPath/drizzle` (**Planned**: packaging must ship this folder; no electron-builder config exists yet).
 
-## Tables (Implemented, migrations `0000` to `0008`)
+## Tables (Implemented, migrations `0000` to `0009`)
 
 **projects**: `id` (text PK, uuid), `name`, `description` (default ''), `repo_path` (unique), `default_branch` (nullable), `is_git_repo`, `config` (JSON, default `{}`, platform-level config, unused), `team_lead_session_id` (nullable, the SDK session to resume), `repo_settings_trust` (`unset|trusted|untrusted`, default `unset`, migration 0002; gates the Team Lead), `onboarding_data` (JSON, nullable: discovery result, Team Lead summary, proposed workflow guidance, error, timestamps; migration 0001), `status` (`active|archived`), `onboarding_status` (`pending|in_progress|ready|failed`), `created_at`, `updated_at` (epoch ms, default now).
 
@@ -24,6 +24,8 @@ SQLite file `orbyte.db` in `app.getPath('userData')`, accessed with better-sqlit
 **plan_reviews**: the Team Lead's advice: `plan_id` (FK), `plan_version`, `reviewer` (`team_lead` only), `recommendation` (`approve|revise|reject`), `summary`, `concerns` (JSON), `created_at`. Advice never authorizes anything.
 
 **plan_approvals**: the user's decisions: `task_id`, `agent_id`, `plan_id`, `plan_version`, `plan_hash`, `reviewer` (`user` only), `status` (`approved|rejected`), `reason`, `decided_at`, `invalidated_at`, `invalidation_reason`. A **partial unique index** `approvals_one_valid_per_task` allows at most one approved, non-invalidated row per task. Invalidated means superseded by a new plan version, revoked, rejected, consumed by an execution start, or the task left awaiting approval.
+
+**team_lead_usage** (0009): the newest cumulative usage the Agent SDK reported per Team Lead session (`project_id` + `session_id` key): `cost_usd`, input, output, cache read and cache creation tokens. A lower report than the stored one is ignored. Estimates, not a bill. Agent usage is not stored: it is read from Claude Code's transcripts when asked.
 
 **signature** (0008): nullable HMAC on `plan_approvals` and `result_decisions`; rows without a valid signature never authorize anything.
 

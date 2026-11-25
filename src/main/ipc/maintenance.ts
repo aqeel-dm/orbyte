@@ -2,13 +2,16 @@ import { BrowserWindow, dialog } from 'electron'
 import { IPC } from '@shared/constants/ipc'
 import { cleanOrphansInputSchema } from '@shared/schemas/maintenance'
 import type { SystemCheck } from '@shared/schemas/system'
+import { usageInputSchema } from '@shared/schemas/usage'
+import type { UsageService } from '../modules/usage/usage-service'
 import type { MaintenanceService } from '../modules/maintenance/service'
 import { AppError } from '@shared/types/result'
 import { handle } from './handle'
 
 /** Maintenance actions. No path crosses the bridge: the save location is chosen in a native dialog in main. */
-export function registerMaintenanceHandlers(deps: { maintenance: MaintenanceService; systemCheck: () => Promise<SystemCheck> }): void {
-  const { maintenance, systemCheck } = deps
+export function registerMaintenanceHandlers(deps: { maintenance: MaintenanceService; systemCheck: () => Promise<SystemCheck>; usage: UsageService }): void {
+  const { maintenance, systemCheck, usage } = deps
+  handle(IPC.usage.get, usageInputSchema, ({ projectId }) => usage.summary(projectId))
   handle(IPC.system.check, null, () => systemCheck())
   handle(IPC.maintenance.scan, null, () => maintenance.scan())
   handle(IPC.maintenance.cleanOrphans, cleanOrphansInputSchema, ({ ids }) => maintenance.cleanOrphans(ids))

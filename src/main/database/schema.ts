@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { check, index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import type { OnboardingData } from '@shared/schemas/onboarding'
 import type { Evidence, ReportedTest } from '@shared/schemas/execution'
 import type { SubmittedPlan } from '@shared/schemas/plan'
@@ -324,4 +324,24 @@ export const testRuns = sqliteTable(
     endedAt: integer('ended_at')
   },
   (t) => [index('test_runs_task_idx').on(t.taskId, t.startedAt)]
+)
+
+/**
+ * What the Claude Agent SDK reports for each Team Lead session: the LATEST cumulative totals (the SDK's own
+ * totals continue across resumed turns, so the newest report per session is the right one, never a sum).
+ * These are estimates reported by the SDK, not a bill.
+ */
+export const teamLeadUsage = sqliteTable(
+  'team_lead_usage',
+  {
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    sessionId: text('session_id').notNull(),
+    costUsd: real('cost_usd').notNull().default(0),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    cacheReadTokens: integer('cache_read_tokens').notNull().default(0),
+    cacheCreationTokens: integer('cache_creation_tokens').notNull().default(0),
+    updatedAt: integer('updated_at').notNull().default(now)
+  },
+  (t) => [primaryKey({ columns: [t.projectId, t.sessionId] })]
 )

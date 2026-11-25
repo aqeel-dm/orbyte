@@ -79,5 +79,8 @@ A render error in a screen now shows a recoverable error card (sidebar kept, Rel
 ## Follow-up: search, filters and the getting-started card
 The Tasks tab has search and a priority filter; the dashboard searches projects once there are more than three. A getting-started card (`system:check`) reports git, the `claude` command and secure key storage and stays until the first project is registered (and always while something is missing). 343 tests; the card was checked in the real app with an empty data folder. Usage and cost visibility was not built (see `REQUIREMENTS.md`).
 
+## Follow-up: usage visibility
+A "Usage (estimates)" card on the project overview (migration 0009). Team Lead: the newest cumulative report per SDK session. Agents: tokens read from Claude Code's session files, counting each message once. Checked live against a real agent transcript (6 input, 756 output, 45,712 cache read, 24,556 cache write, matching a hand count); a real Team Lead result message was not exercised, so the SDK field names are taken from its type definitions. 352 tests.
+
 ## Open items after Phase 7
 `repoPath` re-validation for the Team Lead and later worktree operations (agent start now re-validates); how to treat the `!` shell-mode gap; packaging (**Planned**, deferred): `asarUnpack` for the SDK binary, `node-pty` and the agent server, Electron Fuses, signing.

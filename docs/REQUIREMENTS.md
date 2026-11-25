@@ -92,6 +92,7 @@ A local-first, single-user desktop app that coordinates Claude Code developer ag
 | UI-6 | Clear loading, error, empty and disconnected states; dark and light themes | Met for the screens checked; not a formal design review. A screen that throws while rendering shows a recovery card instead of a blank window |
 | UI-8 | Help a new user get started | Met: a getting-started card checks git, the `claude` command and secure key storage and says what to do; checked in the real UI. Whether Claude Code is signed in is not checked |
 | UI-9 | Find things in long lists | Met: search and priority filter in the Tasks tab (search also finds closed tasks); project search on the dashboard when there are more than three projects. Unit-tested filters; the UI controls were not clicked in an automated run |
+| UI-10 | Show usage | Partial, by design: the project overview shows Team Lead tokens and the SDK's cost estimate (recorded from this version on) and agent tokens read from Claude Code's transcripts. No dollar figure for agents (no price list); with a subscription login dollar figures are not what you are charged. The Team Lead recording was verified with a fake SDK stream, not a live turn; the transcript reader was verified against a real agent transcript |
 | UI-7 | The interface separates ordinary conversation from state-changing actions | Partial: proposals and approvals are separate dialogs; not assessed beyond that |
 
 ## 8. Persistence and lifecycle (8)
@@ -159,4 +160,4 @@ Made by the user while building (answers to questions, or direct instructions):
 
 ## Open items
 
-Usage and cost visibility was considered and not built: developer agents are real `claude` processes whose usage Orbyte cannot observe, and the SDK's cost fields are cumulative per session (summing them double counts), so a figure would be partial or misleading. the `!` shell-mode gap in execution agents (planning agents have a best-effort guard); re-validating `repoPath` for the Team Lead and later worktree operations; Playwright tests; integration adapters; packaging. Each is also tracked in `ROADMAP.md` or `SECURITY.md`.
+the `!` shell-mode gap in execution agents (planning agents have a best-effort guard); re-validating `repoPath` for the Team Lead and later worktree operations; Playwright tests; integration adapters; packaging. Each is also tracked in `ROADMAP.md` or `SECURITY.md`.

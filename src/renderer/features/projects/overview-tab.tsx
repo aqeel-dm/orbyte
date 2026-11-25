@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card'
 import { AUTH_HELP } from '@/hooks/use-team-lead-chat'
 import { ActivityList } from './activity-list'
 import { DecisionList } from './decision-list'
+import { UsageCard } from './usage-card'
 import { TrustPanel } from './trust-panel'
 
 const statusLabel = { pending: 'Not onboarded', in_progress: 'Onboarding…', ready: 'Ready', failed: 'Onboarding failed' } as const
@@ -73,6 +74,7 @@ export function OverviewTab({ project, onChanged }: { project: Project; onChange
           <p className="mt-2 whitespace-pre-wrap break-words text-sm">{data.summary}</p>
         </Card>
       )}
+      <UsageCard projectId={project.id} />
       <DecisionList projectId={project.id} />
       <ActivityList projectId={project.id} />
 
