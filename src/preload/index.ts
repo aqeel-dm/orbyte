@@ -22,7 +22,8 @@ const api: OrbyteApi = {
   teamLead: {
     send: (projectId, text) => ipcRenderer.invoke(IPC.teamLead.send, { projectId, text }),
     interrupt: (projectId) => ipcRenderer.invoke(IPC.teamLead.interrupt, { projectId }),
-    history: (projectId) => ipcRenderer.invoke(IPC.teamLead.history, { projectId })
+    history: (projectId) => ipcRenderer.invoke(IPC.teamLead.history, { projectId }),
+    summary: () => ipcRenderer.invoke(IPC.teamLead.summary)
   },
   tasks: {
     list: (projectId) => ipcRenderer.invoke(IPC.tasks.list, { projectId }),
@@ -37,7 +38,8 @@ const api: OrbyteApi = {
     dismiss: (projectId, proposalId) => ipcRenderer.invoke(IPC.proposals.dismiss, { projectId, proposalId })
   },
   activity: {
-    list: (projectId, limit) => ipcRenderer.invoke(IPC.activity.list, { projectId, limit })
+    list: (projectId, limit) => ipcRenderer.invoke(IPC.activity.list, { projectId, limit }),
+    listRecent: (limit) => ipcRenderer.invoke(IPC.activity.listRecent, { limit })
   },
   agents: {
     list: (projectId) => ipcRenderer.invoke(IPC.agents.list, { projectId }),

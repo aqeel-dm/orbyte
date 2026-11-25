@@ -111,6 +111,13 @@ export const activityEventSchema = z.object({
   createdAt: z.number()
 })
 
+export const recentActivityInputSchema = z.object({ limit: z.number().int().min(1).max(100).optional() })
+/** An event from any active project; `projectName` is null for app-wide events such as startup recovery. */
+export const recentActivityEventSchema = activityEventSchema.extend({
+  projectId: z.string().nullable(),
+  projectName: z.string().nullable()
+})
+
 export const taskSummarySchema = z.object({ open: z.number(), byStatus: z.record(z.string(), z.number()) })
 
 export type Task = z.infer<typeof taskSchema>
@@ -121,4 +128,5 @@ export type ProposeTasksInput = z.infer<typeof proposeTasksInputSchema>
 export type CreateTaskInput = z.input<typeof createTaskInputSchema>
 export type UpdateTaskInput = z.input<typeof updateTaskInputSchema>
 export type ActivityEvent = z.infer<typeof activityEventSchema>
+export type RecentActivityEvent = z.infer<typeof recentActivityEventSchema>
 export type TaskSummary = z.infer<typeof taskSummarySchema>

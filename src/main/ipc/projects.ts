@@ -6,6 +6,7 @@ import type { OnboardingService } from '../modules/projects/onboarding'
 import type { ProjectService } from '../modules/projects/service'
 import type { TeamLeadService } from '../modules/agents/team-lead/service'
 import type { AppEvent } from '@shared/schemas/team-lead'
+import { summarizeTeamLeads } from '../modules/agents/team-lead/summary'
 import { handle } from './handle'
 import { log } from '../logging/logger'
 
@@ -53,5 +54,6 @@ export function registerProjectHandlers(deps: {
     teamLead.interrupt(projectId)
     return null
   })
+  handle(IPC.teamLead.summary, null, () => summarizeTeamLeads(projects.list(false), (id) => teamLead.isActive(id)))
   handle(IPC.teamLead.history, projectIdInputSchema, ({ projectId }) => teamLead.history(projectId))
 }

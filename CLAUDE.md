@@ -49,6 +49,7 @@ Docs (read the relevant one before changing that area, and update it when behavi
 - `docs/IPC-CONTRACTS.md`: channels, schemas, error codes, how to add a channel
 - `docs/SECURITY.md`: code-enforced protections vs known gaps
 - `docs/DEVELOPMENT.md`: setup, native modules, tests
+- `docs/REQUIREMENTS.md`: what the app must do (from the original brief and your decisions) and whether each requirement is met
 - `docs/ROADMAP.md`: the seven phases and status
 
 ## Reviewers

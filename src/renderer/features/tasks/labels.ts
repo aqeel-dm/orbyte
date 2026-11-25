@@ -44,6 +44,13 @@ export function describeEvent(type: string, payload: Record<string, unknown>): s
     case 'result.accepted': return 'You accepted the result'
     case 'result.changes_requested': return 'You requested changes'
     case 'acceptance.invalidated': return 'Acceptance no longer valid'
+    case 'agent.created': return 'Developer agent created'
+    case 'agent.started': return 'Developer agent started'
+    case 'agent.interrupted': return 'Developer agent interrupted (the app closed while it ran)'
+    case 'recovery.completed': {
+      const n = (k: string) => (typeof payload[k] === 'number' ? (payload[k] as number) : 0)
+      return `Startup check: ${n('interruptedAgents')} interrupted agent(s), ${n('interruptedRuns')} interrupted run(s), ${n('orphanWorktrees')} leftover worktree(s)`
+    }
     default: return type
   }
 }

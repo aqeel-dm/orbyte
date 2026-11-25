@@ -1,10 +1,10 @@
 import type { DiscoveryResult } from '../schemas/onboarding'
 import type { ListProjectsInput, PickDirectoryResult, Project, RegisterProjectInput } from '../schemas/project'
-import type { AppEvent, ChatMessage, SendMessageResult } from '../schemas/team-lead'
+import type { AppEvent, ChatMessage, SendMessageResult, TeamLeadSummary } from '../schemas/team-lead'
 import type { ExecutionBundle, ResultDecision } from '../schemas/execution'
 import type { PlanApproval, PlanBundle } from '../schemas/plan'
 import type { AgentSummary, AttachResult, DeveloperAgent, TerminalEvent } from '../schemas/agent'
-import type { ActivityEvent, CreateTaskInput, ProposalItem, Task, TaskProposal, TaskSummary, UpdateTaskInput } from '../schemas/task'
+import type { ActivityEvent, RecentActivityEvent, CreateTaskInput, ProposalItem, Task, TaskProposal, TaskSummary, UpdateTaskInput } from '../schemas/task'
 import type { BackupResult, CleanOrphansResult, MaintenanceScan } from '../schemas/maintenance'
 import type { TaskStatus } from '../task-state'
 import type { Result } from './result'
@@ -32,6 +32,8 @@ export interface OrbyteApi {
     send(projectId: string, text: string): Promise<Result<SendMessageResult>>
     interrupt(projectId: string): Promise<Result<null>>
     history(projectId: string): Promise<Result<ChatMessage[]>>
+    /** How many Team Leads are set up and how many are working now. */
+    summary(): Promise<Result<TeamLeadSummary>>
   }
   tasks: {
     list(projectId: string): Promise<Result<Task[]>>
@@ -49,6 +51,8 @@ export interface OrbyteApi {
   }
   activity: {
     list(projectId: string, limit?: number): Promise<Result<ActivityEvent[]>>
+    /** Newest events across active projects (and app-wide events), newest first. */
+    listRecent(limit?: number): Promise<Result<RecentActivityEvent[]>>
   }
   agents: {
     list(projectId: string): Promise<Result<DeveloperAgent[]>>

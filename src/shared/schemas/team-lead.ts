@@ -33,6 +33,9 @@ export const appEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('executions_changed'), projectId: z.string(), taskId: z.string() })
 ])
 
+/** `ready`: active projects whose onboarding finished. `working`: Team Lead turns running right now. */
+export const teamLeadSummarySchema = z.object({ ready: z.number(), working: z.number() })
+export type TeamLeadSummary = z.infer<typeof teamLeadSummarySchema>
 export type ChatMessage = z.infer<typeof chatMessageSchema>
 export type SendMessageResult = z.infer<typeof sendMessageResultSchema>
 export type AppEvent = z.infer<typeof appEventSchema>

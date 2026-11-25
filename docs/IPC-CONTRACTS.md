@@ -21,6 +21,7 @@ Invoke channels (renderer to main), defined in `src/shared/constants/ipc.ts`; th
 | `teamLead.send(projectId, text)` | `teamLead:send` | `{projectId, text (1-20000, trimmed)}` | `{turnId, userMessage}` (the reply streams as events) |
 | `teamLead.interrupt(projectId)` | `teamLead:interrupt` | `{projectId}` | `null` |
 | `teamLead.history(projectId)` | `teamLead:history` | `{projectId}` | `ChatMessage[]` oldest first |
+| `teamLead.summary()` | `teamLead:summary` | none | `{ready, working}`: active projects whose onboarding finished, and Team Lead turns running now |
 
 | `tasks.list(projectId)` | `tasks:list` | `{projectId}` | `Task[]` |
 | `tasks.create(input)` | `tasks:create` | `{projectId, title (1-120), description (<=4000), priority, dependsOnTaskIds (<=20)}` | `Task` (always `source: user`, status `backlog`) |
@@ -31,6 +32,7 @@ Invoke channels (renderer to main), defined in `src/shared/constants/ipc.ts`; th
 | `proposals.approve(projectId, proposalId, items)` | `proposals:approve` | `{projectId, proposalId, items: ProposalItem[] (1-20)}` | `Task[]` created. The only way a Team Lead suggestion becomes tasks |
 | `proposals.dismiss(projectId, proposalId)` | `proposals:dismiss` | `{projectId, proposalId}` | `TaskProposal` |
 | `activity.list(projectId, limit?)` | `activity:list` | `{projectId, limit (1-200)}` | `ActivityEvent[]`, newest first |
+| `activity.listRecent(limit?)` | `activity:listRecent` | `{limit (1-100)}` | `RecentActivityEvent[]` (event plus `projectId` and `projectName`), newest first, across active projects; app-wide events (no project, such as `recovery.completed`) have both null; archived projects are left out |
 
 | `agents.list(projectId)` | `agents:list` | `{projectId}` | `DeveloperAgent[]` (no session id, base commit or pid) |
 | `agents.start(projectId, taskId)` | `agents:start` | `{projectId, taskId}` | `DeveloperAgent`; creates the worktree, moves the task to planning, starts the process |

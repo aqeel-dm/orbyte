@@ -1,6 +1,7 @@
 import { IPC } from '@shared/constants/ipc'
 import {
   activityListInputSchema,
+  recentActivityInputSchema,
   approveProposalInputSchema,
   createTaskInputSchema,
   dismissProposalInputSchema,
@@ -37,4 +38,5 @@ export function registerTaskHandlers(deps: {
     projects.get(projectId) // throws NOT_FOUND for an unknown project
     return activity.list(projectId, limit)
   })
+  handle(IPC.activity.listRecent, recentActivityInputSchema, ({ limit }) => activity.listRecent(limit))
 }

@@ -5,8 +5,10 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useProjects } from '@/hooks/use-projects'
 import type { TaskSummary } from '@shared/schemas/task'
+import type { TeamLeadSummary } from '@shared/schemas/team-lead'
 import { MaintenancePanel } from '@/features/maintenance/maintenance-panel'
 import { ProjectCard } from '@/features/projects/project-card'
+import { RecentActivity } from '@/features/projects/recent-activity'
 import { RegisterProjectDialog } from '@/features/projects/register-project-dialog'
 
 // Only real data is shown. Metrics for features that don't exist yet display "—".
@@ -26,13 +28,15 @@ export function DashboardPage() {
   const [open, setOpen] = useState(false)
   const [summary, setSummary] = useState<TaskSummary | null>(null)
   const [running, setRunning] = useState<number | null>(null)
+  const [leads, setLeads] = useState<TeamLeadSummary | null>(null)
   useEffect(() => {
     const load = () => {
       void window.orbyte.tasks.summary().then((r) => { if (r.ok) setSummary(r.data) })
+      void window.orbyte.teamLead.summary().then((r) => { if (r.ok) setLeads(r.data) })
       void window.orbyte.agents.summary().then((r) => { if (r.ok) setRunning(r.data.running) })
     }
     load()
-    return window.orbyte.onEvent((e) => { if (e.type === 'tasks_changed' || e.type === 'project_updated' || e.type === 'agent_changed') load() })
+    return window.orbyte.onEvent((e) => { if (e.type === 'tasks_changed' || e.type === 'project_updated' || e.type === 'agent_changed' || e.type === 'turn_started' || e.type === 'turn_completed' || e.type === 'turn_error') load() })
   }, [])
   const [actionError, setActionError] = useState<string | null>(null)
 
@@ -59,8 +63,9 @@ export function DashboardPage() {
         <Button onClick={() => setOpen(true)}><FolderPlus className="h-4 w-4" />Register project</Button>
       </header>
 
-      <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Stat label="Projects" value={projects.filter((p) => p.status === 'active').length} />
+        <Stat label="Team Leads" value={leads?.ready ?? '—'} note={leads ? `${leads.working} working now` : undefined} />
         <Stat label="Open tasks" value={summary?.open ?? '—'} note={summary ? `${summary.byStatus['in_progress'] ?? 0} in progress` : undefined} />
         <Stat label="Developer agents" value={running ?? '—'} note="running now" />
         <Stat label="Pending approvals" value={summary ? (summary.byStatus['awaiting_approval'] ?? 0) + (summary.byStatus['in_review'] ?? 0) : '—'} note="plans and results awaiting you" />
@@ -84,6 +89,8 @@ export function DashboardPage() {
       ) : (
         <div className="grid gap-3 md:grid-cols-2">{projects.map((p) => <ProjectCard key={p.id} project={p} onArchive={archive} onRestore={restore} />)}</div>
       )}
+
+      <RecentActivity />
 
       <MaintenancePanel />
 

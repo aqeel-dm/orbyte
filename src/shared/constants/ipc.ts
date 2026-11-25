@@ -16,7 +16,8 @@ export const IPC = {
   teamLead: {
     send: 'teamLead:send',
     interrupt: 'teamLead:interrupt',
-    history: 'teamLead:history'
+    history: 'teamLead:history',
+    summary: 'teamLead:summary'
   },
   tasks: {
     list: 'tasks:list',
@@ -31,7 +32,8 @@ export const IPC = {
     dismiss: 'proposals:dismiss'
   },
   activity: {
-    list: 'activity:list'
+    list: 'activity:list',
+    listRecent: 'activity:listRecent'
   },
   agents: {
     list: 'agents:list',
