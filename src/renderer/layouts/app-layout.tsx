@@ -1,6 +1,7 @@
 import { LayoutDashboard, Moon, Orbit, Sun } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
+import { UpdateBanner } from '@/components/update-banner'
 import { Button } from '@/components/ui/button'
 
 function useTheme() {
@@ -26,6 +27,7 @@ export function AppLayout() {
             <LayoutDashboard className="h-4 w-4" />Dashboard
           </NavLink>
         </nav>
+        <UpdateBanner />
         <div className="no-drag p-2">
           <Button variant="ghost" size="sm" className="w-full justify-start" onClick={toggle}>{dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}{dark ? 'Light' : 'Dark'} theme</Button>
         </div>

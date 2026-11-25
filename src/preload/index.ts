@@ -57,6 +57,11 @@ const api: OrbyteApi = {
   },
   usage: { get: (projectId) => ipcRenderer.invoke(IPC.usage.get, { projectId }) },
   system: { check: () => ipcRenderer.invoke(IPC.system.check) },
+  updates: {
+    status: () => ipcRenderer.invoke(IPC.updates.status),
+    check: () => ipcRenderer.invoke(IPC.updates.check),
+    openDownload: () => ipcRenderer.invoke(IPC.updates.openDownload)
+  },
   maintenance: {
     scan: () => ipcRenderer.invoke(IPC.maintenance.scan),
     cleanOrphans: (ids) => ipcRenderer.invoke(IPC.maintenance.cleanOrphans, { ids }),

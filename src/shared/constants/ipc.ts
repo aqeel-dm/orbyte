@@ -67,6 +67,7 @@ export const IPC = {
     testRuns: 'executions:testRuns'
   },
   system: { check: 'system:check' },
+  updates: { status: 'updates:status', check: 'updates:check', openDownload: 'updates:openDownload' },
   usage: { get: 'usage:get' },
   maintenance: {
     scan: 'maintenance:scan',

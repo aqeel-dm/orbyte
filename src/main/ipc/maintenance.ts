@@ -3,14 +3,18 @@ import { IPC } from '@shared/constants/ipc'
 import { cleanOrphansInputSchema } from '@shared/schemas/maintenance'
 import type { SystemCheck } from '@shared/schemas/system'
 import { usageInputSchema } from '@shared/schemas/usage'
+import type { UpdateService } from '../modules/updates/update-service'
 import type { UsageService } from '../modules/usage/usage-service'
 import type { MaintenanceService } from '../modules/maintenance/service'
 import { AppError } from '@shared/types/result'
 import { handle } from './handle'
 
 /** Maintenance actions. No path crosses the bridge: the save location is chosen in a native dialog in main. */
-export function registerMaintenanceHandlers(deps: { maintenance: MaintenanceService; systemCheck: () => Promise<SystemCheck>; usage: UsageService }): void {
-  const { maintenance, systemCheck, usage } = deps
+export function registerMaintenanceHandlers(deps: { maintenance: MaintenanceService; systemCheck: () => Promise<SystemCheck>; usage: UsageService; updates: UpdateService }): void {
+  const { maintenance, systemCheck, usage, updates } = deps
+  handle(IPC.updates.status, null, () => updates.getStatus())
+  handle(IPC.updates.check, null, () => updates.check())
+  handle(IPC.updates.openDownload, null, async () => { await updates.openDownload(); return null })
   handle(IPC.usage.get, usageInputSchema, ({ projectId }) => usage.summary(projectId))
   handle(IPC.system.check, null, () => systemCheck())
   handle(IPC.maintenance.scan, null, () => maintenance.scan())

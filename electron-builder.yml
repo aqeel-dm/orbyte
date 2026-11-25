@@ -19,6 +19,7 @@ npmRebuild: true
 mac:
   artifactName: ${productName}-${version}-${arch}.${ext}
   category: public.app-category.developer-tools
+  icon: build/icon.icns
   target: [dmg, zip]
   # Unsigned for now: no Apple Developer ID yet (see docs/SECURITY.md). macOS shows a Gatekeeper warning.
   identity: null

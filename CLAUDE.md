@@ -24,7 +24,7 @@ There is no linter or formatter. Before saying work is done, run `pnpm typecheck
 
 ## Layout
 
-- `src/main/`: backend. `app/` (window), `ipc/` (`handle.ts` wrapper + thin handlers), `modules/projects/` (repository, service, discovery, onboarding), `modules/tasks/` (state, dependencies), `modules/orchestration/` (task proposals; plans, reviews, approvals and the execution gate), `agent-mcp/` (the `submit_plan` server), `modules/agents/team-lead/` (read-only SDK session + task tools), `modules/agents/developers/` (agents, worktrees, PTY), `modules/git/` (read-only inspect), `modules/maintenance/` (startup sweep, orphans, backup), `security/` (row signer), `logging/` (logger), `notifications/` (decision notifier), `database/` (schema, client)
+- `src/main/`: backend. `app/` (window), `ipc/` (`handle.ts` wrapper + thin handlers), `modules/projects/` (repository, service, discovery, onboarding), `modules/tasks/` (state, dependencies), `modules/orchestration/` (task proposals; plans, reviews, approvals and the execution gate), `agent-mcp/` (the `submit_plan` server), `modules/agents/team-lead/` (read-only SDK session + task tools), `modules/agents/developers/` (agents, worktrees, PTY), `modules/git/` (read-only inspect), `modules/maintenance/` (startup sweep, orphans, backup), `security/` (row signer), `logging/` (logger), `notifications/` (decision notifier), `modules/updates/` (update check), `database/` (schema, client)
 - `src/preload/index.ts`: the only bridge, exposes `window.orbyte`
 - `src/renderer/`: React UI (`pages/`, `features/`, `components/ui/`, `hooks/`, `layouts/`, `lib/`)
 - `src/shared/`: Zod schemas, types, IPC channel map (the contract; imports nothing from other layers)

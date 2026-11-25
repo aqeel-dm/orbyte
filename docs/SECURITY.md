@@ -147,3 +147,6 @@ Open, accepted for now:
 
 ## AI instructions only (not enforced)
 Everything in `CLAUDE.md` and `.claude/rules/` is guidance to Claude Code sessions. It reduces mistakes but does not stop one.
+
+## Update check
+`modules/updates/update-service.ts` reads `https://api.github.com/repos/aqeel-dm/orbyte/releases` (fixed URL, from main, no credentials, nothing about you sent) and shows "Update to vX" when a newer `vMAJOR.MINOR.PATCH` release exists. The release page URL must start with `https://github.com/aqeel-dm/orbyte/releases/`; `updates:openDownload` takes no argument and opens only that stored URL with `shell.openExternal` (a new `openExternal` path, deliberately limited to this). Nothing is downloaded or installed by the app, so a bad release page cannot run code by itself. Limits: the downloaded app is **unsigned**, so you rely on GitHub and the release's `SHA256SUMS.txt`; checks need the repository (or a releases-only repository) to be public; there is no off switch. Silent in-app update is **Planned** (needs signing and notarization).

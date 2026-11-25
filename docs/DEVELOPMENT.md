@@ -49,6 +49,9 @@ Same setup as the agents check (scratch repo, real `claude`, real Team Lead, use
 ## Releases
 Every push to `main` that changes more than `docs/`, `*.md` or `.claude/` runs `.github/workflows/release.yml`: typecheck and tests, then macOS arm64 and x64 packages (`electron-builder.yml`), then a GitHub pre-release `vMAJOR.MINOR.<run number>`. `package.json` holds MAJOR.MINOR (edit it to bump minor or major); the patch is the run number and nothing is committed back. Builds are unsigned (right-click, Open on first launch). Local build: `pnpm package` (output in `dist/`, git-ignored). The first CI run is the first test of the workflow.
 
+## Updating the app and the icon
+The icon is `build/icon.icns` (made from `build/icon.png`, transparent corners) and is set in `electron-builder.yml`. Updates are notify-and-download: the sidebar shows the version and "Update to vX" when a newer GitHub release exists (checked 30 s after start, every 6 h, or on demand); it opens the release page and you replace the app in Applications. A development run skips the check. Silent update is **Planned** (needs a signed, notarized app).
+
 ## Logs and backups
 Logs: `<userData>/logs/orbyte.log` (plus `orbyte.1.log` to `orbyte.3.log`). In development the same lines also print to the console. The dashboard's Maintenance panel backs up the database and removes leftover worktrees.
 
