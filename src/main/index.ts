@@ -1,11 +1,12 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { app, BrowserWindow, dialog, Notification, safeStorage, webContents } from 'electron'
+import { app, BrowserWindow, dialog, net, Notification, safeStorage, shell, webContents } from 'electron'
 import { openDatabase, type DbHandle } from './database/client'
 import { inspectRepository } from './modules/git/inspect'
 import { ChatRepository } from './modules/agents/team-lead/chat-repository'
 import { createSdkRunner } from './modules/agents/team-lead/runner'
 import { TeamLeadService } from './modules/agents/team-lead/service'
+import { UpdateService } from './modules/updates/update-service'
 import { discoverProject } from './modules/projects/discovery'
 import { OnboardingService } from './modules/projects/onboarding'
 import { ProjectRepository } from './modules/projects/repository'
@@ -66,6 +67,8 @@ process.on('uncaughtException', (err) => log.error('[main] uncaught exception', 
 
 async function bootstrap(): Promise<void> {
   initLogging(join(app.getPath('userData'), 'logs'), { mirror: !app.isPackaged })
+  // A packaged app takes its icon from the bundle; a development run sets it here (macOS Dock).
+  if (!app.isPackaged) app.dock?.setIcon(join(app.getAppPath(), 'build', 'icon.png'))
   log.info(`[main] starting Orbyte ${app.getVersion()}`)
   const migrations = app.isPackaged ? join(process.resourcesPath, 'drizzle') : join(app.getAppPath(), 'drizzle')
   dbHandle = openDatabase(join(app.getPath('userData'), 'orbyte.db'), migrations)
@@ -227,9 +230,20 @@ async function bootstrap(): Promise<void> {
       return stdout.trim().split('\n')[0]?.slice(0, 80) || null
     } catch { return null }
   }
+  // Looks for a newer release on GitHub (read-only) and opens its page on request. Nothing is downloaded or installed.
+  const updates = new UpdateService({
+    currentVersion: app.getVersion(),
+    packaged: app.isPackaged,
+    fetch: (url, init) => net.fetch(url, init),
+    openExternal: (url) => shell.openExternal(url),
+    log: (message, detail) => log.warn(message, detail)
+  })
+  setTimeout(() => void updates.check(), 30_000).unref()
+  setInterval(() => void updates.check(), 6 * 60 * 60 * 1000).unref()
   registerMaintenanceHandlers({
     maintenance,
     usage,
+    updates,
     systemCheck: () => checkSystem({
       gitVersion: () => probe('git', ['--version']),
       resolveClaude: () => resolveClaudeBinary({ env: process.env, home: homedir() }),

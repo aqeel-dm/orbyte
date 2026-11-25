@@ -7,6 +7,7 @@ import type { AgentSummary, AttachResult, DeveloperAgent, TerminalEvent } from '
 import type { ActivityEvent, DecisionItem, RecentActivityEvent, CreateTaskInput, ProposalItem, Task, TaskProposal, TaskSummary, UpdateTaskInput } from '../schemas/task'
 import type { UsageSummary } from '../schemas/usage'
 import type { SystemCheck } from '../schemas/system'
+import type { UpdateStatus } from '../schemas/updates'
 import type { BackupResult, CleanOrphansResult, MaintenanceScan } from '../schemas/maintenance'
 import type { TaskStatus } from '../task-state'
 import type { Result } from './result'
@@ -89,6 +90,14 @@ export interface OrbyteApi {
   usage: {
     /** Token usage and the SDK's cost estimate for one project (Team Lead), plus tokens read from agent transcripts. Estimates, not a bill. */
     get(projectId: string): Promise<Result<UsageSummary>>
+  }
+  updates: {
+    /** What the last check found (cheap, no network). */
+    status(): Promise<Result<UpdateStatus>>
+    /** Looks for a newer release on GitHub now. Read-only. */
+    check(): Promise<Result<UpdateStatus>>
+    /** Opens the download page of the newer release found by the last check. The renderer supplies no URL. */
+    openDownload(): Promise<Result<null>>
   }
   system: {
     /** What Orbyte needs from this computer (git, the claude command, secure key storage). Read-only. */

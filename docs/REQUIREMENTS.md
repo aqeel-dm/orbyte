@@ -134,6 +134,7 @@ A local-first, single-user desktop app that coordinates Claude Code developer ag
 | E-2 | Vitest tests for business rules | Met (300 tests at the last run) |
 | E-3 | Playwright UI tests | **Not met**: Playwright is not installed; the UI was checked by driving the real app over the DevTools protocol |
 | E-4 | Phases 1-7, each leaving the app runnable | Met (packaging partial, see E-5) |
+| E-6 | Learn about new versions without reinstalling by hand | Partial: update notice and download link (public repo needed); silent in-app install **Planned** |
 | E-5 | Packaging for desktop distribution | Partial: unsigned macOS dmg/zip built and released by CI from `main` (local x64 build smoke-tested; CI and arm64 not yet run). **Planned:** Fuses, signing and notarization, auto-update |
 | E-6 | Project folder layout from the brief | Met in spirit: approvals, terminals and sessions live inside `orchestration/` and `agents/developers/` instead of separate modules; the brief allowed the structure to evolve |
 
